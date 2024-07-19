@@ -80,7 +80,7 @@ if __name__ == "__main__":
     args['cam_dist'] =  5
 
     args['des_pos'] = np.array([0.2,-0.1,0.8])
-    args['des_ori_q'] = np.array([-1,1,0,0])
+    args['des_ori_q'] = np.array([1,0,0,0])
 
     args['pos_task_mode'] = 'track'
     args['ori_task_mode'] = 'track'

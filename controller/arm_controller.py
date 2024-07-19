@@ -69,7 +69,7 @@ class ArmController:
         H = H_pos + H_ori
         g = g_pos + g_ori
 
-        q_ddot, tau = self.tsc.get_action(g_pos, H_pos)
+        q_ddot, tau = self.tsc.get_action(g, H)
 
         self.time += self.dt
 
