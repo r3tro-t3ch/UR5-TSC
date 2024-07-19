@@ -26,6 +26,27 @@ class TaskSpaceController:
 
         return A,b
     
+    def get_ineq_constraint(self, tau_max):
+        c = np.ones((self.env.model.nu * 2,)) * tau_max
+        C_tau = np.array([
+            [-1,0,0,0,0,0],
+            [1,0,0,0,0,0],
+            [0,-1,0,0,0,0],
+            [0,1,0,0,0,0],
+            [0,0,-1,0,0,0],
+            [0,0,1,0,0,0],
+            [0,0,0,-1,0,0],
+            [0,0,0,1,0,0],
+            [0,0,0,0,-1,0],
+            [0,0,0,0,1,0],
+            [0,0,0,0,0,-1],
+            [0,0,0,0,0,1]
+        ],dtype=np.float32)
+
+        C = np.concatenate((np.zeros_like(C_tau), C_tau), axis=1)
+
+        return C,c
+    
     
     def get_action(self, g, H):
 
@@ -36,9 +57,7 @@ class TaskSpaceController:
         H_qp[:self.env.model.nv,:self.env.model.nv] = H
 
         A,b = self.get_eq_constraint()
-
-        C = np.zeros((self.env.model.nv + self.env.model.nu, self.env.model.nv + self.env.model.nu))
-        c = np.ones((self.env.model.nv + self.env.model.nu,))
+        C,c = self.get_ineq_constraint(150)
 
         result = qp.run(g_qp, c, H_qp, C, A, b, opts={'MAXITER':30,'VERBOSE':0
                                                       ,'OUTPUT':1})
