@@ -79,13 +79,13 @@ if __name__ == "__main__":
     args['cam_ele'] = -20
     args['cam_dist'] =  5
 
-    args['des_pos'] = np.array([0.2,-0.1,0.8])
+    args['des_pos'] = np.array([0.2,0.4,0.6])
     args['des_ori_q'] = np.array([1,0,0,0])
 
     args['pos_task_mode'] = 'track'
     args['ori_task_mode'] = 'track'
 
-    args['T'] = 4
+    args['T'] = 1
 
     args['pos_task_weight'] = 1
     args['pos_task_kp_track'] = 400

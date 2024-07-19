@@ -54,7 +54,7 @@ class TrajectoryGenerator():
 
         pos_t = np.array([x,y,z])
         vel_t = np.array([vx,vy,vz])
-        acc_t = np.array([ax,vy,vz])
+        acc_t = np.array([ax,ay,az])
         
         self.t += self.dt
 
