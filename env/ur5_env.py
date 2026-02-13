@@ -50,6 +50,10 @@ class UR5Env:
         self.M    = np.zeros((self.model.nv,self.model.nv))
         self.C    = np.zeros((self.model.nv,))
 
+        # Task space dynamics
+        self.Gamma  = np.zeros((6, 6))
+        self.mu     = np.zeros((6, ))
+
         # internal variables
         mj.mj_forward(self.model,self.data)
         
@@ -80,6 +84,17 @@ class UR5Env:
         mj.mj_fullM(self.model, self.M, self.data.qM)
         self.C = self.data.qfrc_bias
 
+        # update task space dynamics
+        J = np.concatenate([self.jacp, self.jacr])
+        M_inv = np.linalg.inv(self.M)
+
+        Gamma_inv = J @ M_inv @ J.T
+
+        Gamma_inv += 1e-3 * np.eye(6)
+
+        self.Gamma  = np.linalg.inv(Gamma_inv)
+        self.mu     = self.Gamma @ J @ M_inv @ self.C
+
         # update pos and vel
         self.ee_pos     = self.data.site_xpos[self.BodyIndex.EE_SITE]
         self.ee_vel     = self.jacp @ self.data.qvel
@@ -89,7 +104,7 @@ class UR5Env:
         self.ee_w       = self.jacr @ self.data.qvel
 
 
-    def apply_external_force(self,body,force):
+    def apply_external_force(self, body, force):
         # apply externam force on any given body
         self.data.xfrc_applied[body,:3] = force
 

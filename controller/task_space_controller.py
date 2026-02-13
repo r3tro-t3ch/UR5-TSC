@@ -1,7 +1,8 @@
 
 import numpy as np
-import qpSWIFT as qp
+# import qpSWIFT as qp
 from env.ur5_env import UR5Env
+from qpsolvers import solve_qp
 
 class TaskSpaceController:
 
@@ -41,7 +42,7 @@ class TaskSpaceController:
             [0,0,0,0,1,0],
             [0,0,0,0,0,-1],
             [0,0,0,0,0,1]
-        ],dtype=np.float32)
+        ], dtype=np.float64)
 
         C = np.concatenate((np.zeros_like(C_tau), C_tau), axis=1)
 
@@ -59,10 +60,7 @@ class TaskSpaceController:
         A,b = self.get_eq_constraint()
         C,c = self.get_ineq_constraint(150)
 
-        result = qp.run(g_qp, c, H_qp, C, A, b, opts={'MAXITER':30,'VERBOSE':0
-                                                      ,'OUTPUT':1})
-    
-        solution = np.array(result['sol'])
+        solution = solve_qp(P=H_qp, q=g_qp, A=A, b=b, G=C, h=c, solver="cvxopt")
 
         q_ddot, tau = solution[:self.env.model.nv], solution[self.env.model.nv: self.env.model.nv + self.env.model.nu]
 

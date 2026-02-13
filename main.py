@@ -11,7 +11,7 @@ def main(args):
     
     while env.is_alive:
         env.step(torq)
-        q_ddot, torq = controller.get_action()
+        torq = controller.get_action()
         controller._log_data()
 
     env.stop()
@@ -80,7 +80,9 @@ if __name__ == "__main__":
     args['cam_dist'] =  5
 
     args['des_pos'] = np.array([0.2,0.4,0.6])
-    args['des_ori_q'] = np.array([1,0,0,0])
+    # args['des_ori_q'] = np.array([1,0,0,0])
+    args['des_ori_q'] = np.array([0.70710678, -0.70710678, 0.0, 0.0])
+
 
     args['pos_task_mode'] = 'track'
     args['ori_task_mode'] = 'track'
@@ -89,12 +91,12 @@ if __name__ == "__main__":
 
     args['pos_task_weight'] = 1
     args['pos_task_kp_track'] = 400
-    args['pos_task_kd_track'] = 40
+    args['pos_task_kd_track'] = 60
     args['pos_task_kd_damp'] = 20
 
     args['ori_task_weight'] = 1
-    args['ori_task_kp_track'] = 400
-    args['ori_task_kd_track'] = 40
+    args['ori_task_kp_track'] = 10
+    args['ori_task_kd_track'] = 1
     args['ori_task_kd_damp'] = 20
 
 

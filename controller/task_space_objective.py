@@ -62,3 +62,42 @@ class EEOrientationTask():
         q_d_x = skew_symmetric(a)
         e = q[0]*a - q_d[0]*b - q_d_x @ b
         return e
+    
+class TaskConsistantEETask:
+
+    def __init__(self,env : UR5Env,w=1,Kp_track=800,Kd_track=20,Kd_damp=20):
+        self.env = env
+        self.Kp_track   = Kp_track*np.diag([1,1,1,1,1,1])
+        self.Kd_track   = Kd_track*np.diag([1,1,1,1,1,1])
+        self.Kd_damp    = Kd_damp*np.diag([1,1,1,1,1,1])
+        self.Q          = np.identity(6) * w
+
+    def get_cost(self,ee_pos_ref=np.zeros(3,),ee_vel_ref=np.zeros(3,),ee_acc_ref=np.zeros(3,), ee_q_ref=np.zeros(3,),ee_w_ref=np.zeros(3,),ee_wdot_ref=np.zeros(3,),mode='track'):
+
+        ee_dot_ref      = np.concatenate([ee_vel_ref, ee_w_ref])
+        ee_ddot_ref     = np.concatenate([ee_acc_ref, ee_wdot_ref])
+
+        delta_ee        = np.concatenate([ee_pos_ref - self.env.ee_pos, self.get_quat_error(self.env.ee_q, ee_q_ref)])
+        delta_ee_dot    = ee_dot_ref - np.concatenate([self.env.ee_vel, self.env.ee_w])
+
+        if mode == "track":
+            x_ddot_ref = ee_ddot_ref + self.Kd_track @ (delta_ee_dot) + self.Kp_track @ delta_ee
+        elif mode == "damp":
+            x_ddot_ref = ee_ddot_ref + self.Kd_damp @ (delta_ee_dot)
+
+        f_d = self.env.Gamma @ x_ddot_ref + self.env.mu
+
+        g = -f_d.T @ self.Q
+        H = self.Q
+
+        return H,g
+
+    def get_euler_error(self, q, q_d):
+        return quat2euler(q_d) - quat2euler(q)
+
+    def get_quat_error(self, q, q_d):
+        a = np.array(q_d[1:4])
+        b = np.array(q[1:4])
+        q_d_x = skew_symmetric(a)
+        e = q[0]*a - q_d[0]*b - q_d_x @ b
+        return e
