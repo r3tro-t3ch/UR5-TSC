@@ -28,14 +28,7 @@ class ConsistentTaskSpaceController:
         C,c = self.get_ineq_constraint(150)
         J = np.concatenate([self.env.jacp, self.env.jacr])
 
-        # f_des = -np.linalg.solve(H, g)
-        # tau_des = J.T @ f_des
-        # print("tau_des:", tau_des)
-
         solution = solve_qp(P=H, q=g, G=C, h=c, solver="cvxopt", verbose=True)
-
-
-        print("Solution : ", solution.shape)
 
         tau = J.T @ solution
 

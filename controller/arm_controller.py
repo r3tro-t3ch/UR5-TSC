@@ -1,6 +1,5 @@
 from controller.task_space_objective import *
-# from controller.task_space_controller import TaskSpaceController
-from controller.task_space_controller_consistent import ConsistantTaskSpaceController
+from controller.task_space_controller_consistent import ConsistentTaskSpaceController
 from utils.data_logger import Logger
 from env.ur5_env import UR5Env
 from utils.trajectory_generator import TrajectoryGenerator
@@ -20,22 +19,6 @@ class ArmController:
         self.pos_task_mode = args['pos_task_mode']
         self.ori_task_mode = args['ori_task_mode']
 
-        # self.pos_task = EEPositionTask(
-        #     self.env,
-        #     w=args['pos_task_weight'],
-        #     Kp_track=args['pos_task_kp_track'],
-        #     Kd_track=args['pos_task_kd_track'],
-        #     Kd_damp=args['pos_task_kd_damp']
-        # )
-
-        # self.ori_task = EEOrientationTask(
-        #     self.env,
-        #     w=args['ori_task_weight'],
-        #     Kp_track=args['ori_task_kp_track'],
-        #     Kd_track=args['ori_task_kd_track'],
-        #     Kd_damp=args['ori_task_kd_damp']
-        # )
-
         self.task = TaskConsistantEETask(
             self.env,
             w=args['ori_task_weight'],
@@ -44,7 +27,7 @@ class ArmController:
             Kd_damp=args['pos_task_kd_damp']
         )
 
-        self.tsc = ConsistantTaskSpaceController(self.env)
+        self.tsc = ConsistentTaskSpaceController(self.env)
 
         self.traj_handler = TrajectoryGenerator(self.dt)
         self.traj_handler.reset_trajectory(
@@ -60,23 +43,6 @@ class ArmController:
     def get_action(self):
         
         self.traj_pos, vel, acc = self.traj_handler.get_trajectory()
-
-        # H_pos, g_pos = self.pos_task.get_cost(
-        #     self.traj_pos,
-        #     vel,
-        #     acc,
-        #     self.pos_task_mode
-        # )
-
-        # H_ori, g_ori = self.ori_task.get_cost(
-        #     self.des_ori_q,
-        #     np.zeros(3),
-        #     np.zeros(3),
-        #     self.ori_task_mode
-        # )
-
-        # H = H_pos + H_ori
-        # g = g_pos + g_ori
 
         H,g = self.task.get_cost(
             self.traj_pos,
