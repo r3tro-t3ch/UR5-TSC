@@ -64,8 +64,9 @@
 
   <worldbody>
     <geom name="floor" size="0 0 .05" type="plane" material="grid" condim="3"/>
+    <geom name="base" pos="0 0 0.2" size="0.1 0.1 0.2" type="box"/>
     <light name="spotlight" mode="targetbodycom" target="wrist_2_link" pos="0 -1 2"/>
-    <body name="base" quat="1 0 0 1" childclass="ur5e">
+    <body name="base" quat="1 0 0 1" pos="0 0 0.4" childclass="ur5e">
       <inertial mass="4.0" pos="0 0 0" diaginertia="0.00443333156 0.00443333156 0.0072"/>
       <geom mesh="base_0" material="black" class="visual"/>
       <geom mesh="base_1" material="jointgray" class="visual"/>
@@ -136,5 +137,6 @@
 
   <keyframe>
     <key name="home" qpos="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0" ctrl="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0"/>
+    <!-- <key name="home" qpos="-0.0628 -3.2 2.3 -2.26 -1.5 0" ctrl="-0.0628 -3.2 2.3 -2.26 -1.5 0"/> -->
   </keyframe>
 </mujoco>

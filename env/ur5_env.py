@@ -30,6 +30,13 @@ class UR5Env:
         self._mj_init()             # initialize mujoco data structures
         self.is_alive       = True
 
+        # add obstacles
+        self.cbf            = args['cbf']
+
+        if self.cbf:
+            self.obstacle   = np.array([*args['obstacle_pos'], *np.zeros((3,))])
+            self.obstacle_r = args['obstacle_r']
+            self.alpha      = args['alpha']
 
         # robot dynamics
 
@@ -51,8 +58,9 @@ class UR5Env:
         self.C    = np.zeros((self.model.nv,))
 
         # Task space dynamics
-        self.Gamma  = np.zeros((6, 6))
-        self.mu     = np.zeros((6, ))
+        self.Lambda     = np.zeros((6, 6))
+        self.Lambda_inv = np.zeros((6, 6))
+        self.mu         = np.zeros((6, ))
 
         # internal variables
         mj.mj_forward(self.model,self.data)
@@ -88,12 +96,12 @@ class UR5Env:
         J = np.concatenate([self.jacp, self.jacr])
         M_inv = np.linalg.inv(self.M)
 
-        Gamma_inv = J @ M_inv @ J.T
+        self.Lambda_inv = J @ M_inv @ J.T
 
-        Gamma_inv += 1e-3 * np.eye(6)
+        self.Lambda_inv += 1e-3 * np.eye(6)
 
-        self.Gamma  = np.linalg.inv(Gamma_inv)
-        self.mu     = self.Gamma @ J @ M_inv @ self.C
+        self.Lambda  = np.linalg.inv(self.Lambda_inv)
+        self.mu     = self.Lambda @ J @ M_inv @ self.C
 
         # update pos and vel
         self.ee_pos     = self.data.site_xpos[self.BodyIndex.EE_SITE]
@@ -122,7 +130,17 @@ class UR5Env:
 
 
     def render(self):
+        self.add_obstacle()
         self.viewer.render()
+
+    def add_obstacle(self,):
+        if self.cbf:
+            self.viewer.add_marker(
+            pos=self.obstacle[:3], 
+            size=np.ones((3,)) * self.obstacle_r, 
+            rgba=[1, 1, 1, 1], 
+            type=mj.mjtGeom.mjGEOM_SPHERE, 
+            label="obstacle")
             
     def stop(self):
         if self.viewer.is_alive:

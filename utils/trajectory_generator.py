@@ -66,3 +66,97 @@ class TrajectoryGenerator():
         invA = np.linalg.inv(A)
         poly_coeff = invA.dot(b)
         return poly_coeff
+    
+
+
+class TrajectoryGenerator3rdOrderMidPoint:
+
+    def __init__(self, dt=0.001):
+
+        self.dt         = dt
+        self.t          = 0
+        self.coeff_x_3rd_order    = np.zeros((4,))
+        self.coeff_y_3rd_order    = np.zeros((4,))
+
+    def reset_3rd_order_trajectory(self,start_pos : np.ndarray, end_pos : np.ndarray, mid_pos : np.ndarray, start_vel : np.ndarray, end_vel : np.ndarray, mid_vel : np.ndarray, T):
+        x_0, y_0, z_0       = start_pos
+        x_T, y_T, z_T       = end_pos
+        x_M, y_M, z_M       = mid_pos
+
+        x_dot_0, y_dot_0, z_dot_0    = start_vel
+        x_dot_T, y_dot_T, z_dot_T    = end_vel
+        x_dot_M, y_dot_M, z_dot_M    = mid_vel
+
+        self.coeff_x_3rd_order = self._compute_3rd_order_polynomial_coeff(
+            r0=x_0,
+            rT=x_T,
+            rM=x_M,
+            rdot0=x_dot_0,
+            rdotT=x_dot_T,
+            rdotM=x_dot_M,
+            T=T
+        )
+
+        self.coeff_y_3rd_order = self._compute_3rd_order_polynomial_coeff(
+            r0=y_0,
+            rT=y_T,
+            rM=y_M,
+            rdot0=y_dot_0,
+            rdotT=y_dot_T,
+            rdotM=y_dot_M,
+            T=T
+        )
+
+        self.coeff_z_3rd_order = self._compute_3rd_order_polynomial_coeff(
+            r0=z_0,
+            rT=z_T,
+            rM=z_M,
+            rdot0=z_dot_0,
+            rdotT=z_dot_T,
+            rdotM=z_dot_M,
+            T=T
+        )
+        
+        self.t = 0
+        self.T = T
+    
+    def get_trajectory(self):
+
+        # check if time is greater than 
+        if self.t>=self.T:
+            self.t = self.T
+        x = self.coeff_x_3rd_order[0] + self.coeff_x_3rd_order[1]*self.t + self.coeff_x_3rd_order[2]*self.t**2 + self.coeff_x_3rd_order[3]*self.t**3
+        vx = self.coeff_x_3rd_order[1] + 2*self.coeff_x_3rd_order[2]*self.t + 3*self.coeff_x_3rd_order[3]*self.t**2
+        ax = 2*self.coeff_x_3rd_order[2] + 6*self.coeff_x_3rd_order[3]*self.t
+
+        y = self.coeff_y_3rd_order[0] + self.coeff_y_3rd_order[1]*self.t + self.coeff_y_3rd_order[2]*self.t**2 + self.coeff_y_3rd_order[3]*self.t**3
+        vy = self.coeff_y_3rd_order[1] + 2*self.coeff_y_3rd_order[2]*self.t + 3*self.coeff_y_3rd_order[3]*self.t**2
+        ay = 2*self.coeff_y_3rd_order[2] + 6*self.coeff_y_3rd_order[3]*self.t
+
+        z = self.coeff_z_3rd_order[0] + self.coeff_z_3rd_order[1]*self.t + self.coeff_z_3rd_order[2]*self.t**2 + self.coeff_z_3rd_order[3]*self.t**3
+        vz = self.coeff_z_3rd_order[1] + 2*self.coeff_z_3rd_order[2]*self.t + 3*self.coeff_z_3rd_order[3]*self.t**2
+        az = 2*self.coeff_z_3rd_order[2] + 6*self.coeff_z_3rd_order[3]*self.t
+
+        pos_t = np.array([x,y,z])
+        vel_t = np.array([vx,vy,vz])
+        acc_t = np.array([ax,ay,az])
+        
+        self.t += self.dt
+
+        return pos_t, vel_t, acc_t
+
+    def _compute_3rd_order_polynomial_coeff(self,r0,rT, rM,rdot0,rdotT, rdotM, T):
+        A = np.array(
+            [
+                [1,0,0,0],
+                [1, T, T**2, T**3],
+                [1, T/2, T**2/4, T**3/8],
+                [0,1,0,0],
+                [0,1,2*T,3*T**2],
+                [0,1,T,3*T**2/4],
+            ])
+        b = np.array([r0,rT, rM, rdot0, rdotT, rdotM])
+        invA = np.linalg.pinv(A)
+        poly_coeff = invA.dot(b)
+        return poly_coeff
+    

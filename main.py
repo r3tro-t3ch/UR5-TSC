@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 def main(args):
     from env.ur5_env import UR5Env
@@ -8,12 +9,16 @@ def main(args):
     env = UR5Env(args)
     controller = ArmController(env, args)
     torq = np.zeros((6,))
+
+    env.data.qpos = env.model.keyframe("home").qpos
     
+
     while env.is_alive:
+        print(env.model.keyframe("home"))
+
         env.step(torq)
         torq = controller.get_action()
         controller._log_data()
-
     env.stop()
 
     log_data = controller.logger
@@ -39,16 +44,22 @@ def main(args):
     plt.figure()
     plt.plot(times, ee_pos_x)
     plt.plot(times, ee_pos_x_ref)
+    if env.cbf:
+        plt.scatter(times, np.ones(len(times)) * env.obstacle[0])
     plt.legend(['ee_pos_x', 'ee_pos_x_ref'])
 
     plt.figure()
     plt.plot(times, ee_pos_y)
     plt.plot(times, ee_pos_y_ref)
+    if env.cbf:
+        plt.scatter(times, np.ones(len(times)) * env.obstacle[1])
     plt.legend(['ee_pos_y', 'ee_pos_y_ref'])
 
     plt.figure()
     plt.plot(times, ee_pos_z)
     plt.plot(times, ee_pos_z_ref)
+    if env.cbf:
+        plt.scatter(times, np.ones(len(times)) * env.obstacle[2])
     plt.legend(['ee_pos_z', 'ee_pos_z_ref'])
 
     plt.figure()
@@ -66,6 +77,18 @@ def main(args):
     plt.plot(times, ee_ori_z_ref)
     plt.legend(['ee_ori_z', 'ee_ori_z_ref'])
 
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')  # 111 = 1x1 grid, first subplot
+    if env.cbf:
+        ax.scatter(*env.obstacle[:3], label="obstacle", s=env.obstacle_r*2000)
+    ax.plot(ee_pos_x, ee_pos_y, ee_pos_z, label='ee position', color='b')
+    ax.plot(ee_pos_x_ref, ee_pos_y_ref, ee_pos_z_ref, label='ee position ref', color='pink')
+    ax.set_xlabel('X axis')
+    ax.set_ylabel('Y axis')
+    ax.set_zlabel('Z axis')
+    ax.set_title('3D Plot of end effector')
+    ax.legend()
+
     plt.show()
 
 
@@ -79,14 +102,19 @@ if __name__ == "__main__":
     args['cam_ele'] = -20
     args['cam_dist'] =  5
 
-    args['des_pos'] = np.array([0.2,0.4,0.6])
-    args['des_ori_q'] = np.array([0.70710678, -0.70710678, 0.0, 0.0])
+    args['des_pos'] = np.array([0.6,0.6,0.6])
+    args['des_ori_q'] = np.array([1, 0.0, 0.0, 0.0])
 
+    # cbf
+    args['cbf']             = True
+    args['obstacle_pos']    = np.array([0.2, 0.7, 0.5])
+    args['obstacle_r']      = 0.05
+    args['alpha']           = np.array([0.1,0.1])
 
     args['pos_task_mode'] = 'track'
     args['ori_task_mode'] = 'track'
 
-    args['T'] = 1
+    args['T'] = 5
 
     args['pos_task_weight'] = 1
     args['pos_task_kp_track'] = 800

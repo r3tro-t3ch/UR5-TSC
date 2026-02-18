@@ -2,7 +2,7 @@ from controller.task_space_objective import *
 from controller.task_space_controller_consistent import ConsistentTaskSpaceController
 from utils.data_logger import Logger
 from env.ur5_env import UR5Env
-from utils.trajectory_generator import TrajectoryGenerator
+from utils.trajectory_generator import TrajectoryGenerator, TrajectoryGenerator3rdOrderMidPoint
 
 class ArmController:
 
@@ -19,16 +19,28 @@ class ArmController:
         self.pos_task_mode = args['pos_task_mode']
         self.ori_task_mode = args['ori_task_mode']
 
-        self.task = TaskConsistantEETask(
-            self.env,
-            w=args['ori_task_weight'],
-            Kp_track=args['pos_task_kp_track'],
-            Kd_track=args['pos_task_kd_track'],
-            Kd_damp=args['pos_task_kd_damp']
-        )
+        self.cbf            = args['cbf']
 
-        self.tsc = ConsistentTaskSpaceController(self.env)
+        if self.cbf:
+            self.obstacle   = np.array([*args['obstacle_pos'], *np.zeros((3,))])
+            self.obstacle_r = args['obstacle_r']
+            self.alpha      = args['alpha']
 
+            self.tsc = ConsistentTaskSpaceController(self.env, self.obstacle, self.alpha, self.obstacle_r, self.cbf)
+            
+            # self.traj_handler = TrajectoryGenerator3rdOrderMidPoint(self.dt)
+            # self.traj_handler.reset_3rd_order_trajectory(
+            #     self.env.ee_pos,
+            #     self.des_pos,
+            #     self.obstacle[:3],
+            #     np.zeros(3),
+            #     np.zeros(3),
+            #     np.zeros(3),
+            #     args['T'],
+            # )
+        else:
+            self.tsc = ConsistentTaskSpaceController(self.env)
+            
         self.traj_handler = TrajectoryGenerator(self.dt)
         self.traj_handler.reset_trajectory(
             self.env.ee_pos,
@@ -37,6 +49,17 @@ class ArmController:
             np.zeros(3),
             args['T']
         )
+    
+        self.task = TaskConsistantEETask(
+            self.env,
+            w=args['ori_task_weight'],
+            Kp_track=args['pos_task_kp_track'],
+            Kd_track=args['pos_task_kd_track'],
+            Kd_damp=args['pos_task_kd_damp']
+        )
+
+
+        
 
         self.logger = Logger()
 

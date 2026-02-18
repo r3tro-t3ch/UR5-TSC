@@ -85,7 +85,7 @@ class TaskConsistantEETask:
         elif mode == "damp":
             x_ddot_ref = ee_ddot_ref + self.Kd_damp @ (delta_ee_dot)
 
-        f_d = self.env.Gamma @ x_ddot_ref + self.env.mu
+        f_d = self.env.Lambda @ x_ddot_ref + self.env.mu
 
         g = -f_d.T @ self.Q
         H = self.Q
