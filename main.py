@@ -103,10 +103,10 @@ if __name__ == "__main__":
     args['cam_dist'] =  5
 
     args['des_pos'] = np.array([0.6,0.6,0.6])
-    args['des_ori_q'] = np.array([1, 0.0, 0.0, 0.0])
+    args['des_ori_q'] = np.array([1, 0.0, 0.0, 0])
 
     # cbf
-    args['cbf']             = True
+    args['cbf']             = False
     args['obstacle_pos']    = np.array([0.2, 0.7, 0.5])
     args['obstacle_r']      = 0.05
     args['alpha']           = np.array([0.1,0.1])

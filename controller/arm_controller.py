@@ -21,6 +21,8 @@ class ArmController:
 
         self.cbf            = args['cbf']
 
+        self.init           = True
+
         if self.cbf:
             self.obstacle   = np.array([*args['obstacle_pos'], *np.zeros((3,))])
             self.obstacle_r = args['obstacle_r']
@@ -42,13 +44,7 @@ class ArmController:
             self.tsc = ConsistentTaskSpaceController(self.env)
             
         self.traj_handler = TrajectoryGenerator(self.dt)
-        self.traj_handler.reset_trajectory(
-            self.env.ee_pos,
-            self.des_pos,
-            np.zeros(3),
-            np.zeros(3),
-            args['T']
-        )
+        
     
         self.task = TaskConsistantEETask(
             self.env,
@@ -64,6 +60,16 @@ class ArmController:
         self.logger = Logger()
 
     def get_action(self):
+
+        if self.init:
+            self.traj_handler.reset_trajectory(
+                self.env.ee_pos,
+                self.des_pos,
+                np.zeros(3),
+                np.zeros(3),
+                10
+            )
+            self.init = False
         
         self.traj_pos, vel, acc = self.traj_handler.get_trajectory()
 

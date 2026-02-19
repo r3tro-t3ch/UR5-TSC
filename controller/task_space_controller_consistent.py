@@ -39,7 +39,7 @@ class ConsistentTaskSpaceController:
     def h_ddot(self,):
         # h_ddot = -Lambda_inv mu + Lambda_inv J^T
         J = np.concatenate([self.env.jacp, self.env.jacr])
-        return -self.env.Lambda_inv @ self.env.mu + self.env.Lambda_inv + J.T
+        return -self.env.Lambda_inv @ self.env.mu + self.env.Lambda_inv @ J.T
 
     def get_cbf_ineq_constraints(self, x):
         # Lf^2 h(x) + LgLf h(x) >= -alpha_2(h2(x))
@@ -55,7 +55,7 @@ class ConsistentTaskSpaceController:
             C_tau, c_tau = self.get_ineq_constraint(150)
             C_cbf, c_cbf = self.get_cbf_ineq_constraints(np.array([*self.env.ee_pos, *np.zeros((3,))]))
 
-        # print(C_cbf.shape, C_tau.shape)
+            # print(C_cbf)
 
             C = np.concatenate([C_tau, C_cbf])
             c = np.concatenate([c_tau, c_cbf])
