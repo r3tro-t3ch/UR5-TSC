@@ -29,22 +29,19 @@ class ConsistentTaskSpaceController:
         return C,c
     
     def h(self, x):
-        # h(x) = (x - x_o)^2 - r
-        return (x - self.obstacle).T @ (x - self.obstacle) - self.obstacle_r
+        # h(x) = (x - x_o)^2 - rq
+        return (x - self.obstacle).T @ (x - self.obstacle) - self.obstacle_r**2
 
     def h_x(self, x):
         return 2*(x - self.obstacle)
 
     def h_dot(self, x):
         # h2(x) = Lfh(x) + alpha_1(h) 
-        # v = np.concatenate([self.env.ee_vel, self.env.ee_w])
         v = self.env.ee_vel
         return self.h_x(x).T @ v + self.alpha[0] * self.h(x)
 
     def get_cbf_ineq_constraints(self, x):
         # Lf^2 h(x) + LgLf h(x) >= -alpha_2(h2(x))
-        # -Lambda_inv f <= \alpha_2 h_dot - \Lambda_inv \mu
-        # v = np.concatenate([self.env.ee_vel, self.env.ee_w])
         v = self.env.ee_vel
 
         C_cbf = - self.h_x(x).T @ self.env.Lambda_inv[:3,:]
@@ -57,7 +54,6 @@ class ConsistentTaskSpaceController:
     
     def get_action(self, g, H):
 
-
         if self.cbf:
             C_tau, c_tau = self.get_ineq_constraint(150)
             C_cbf, c_cbf = self.get_cbf_ineq_constraints(self.env.ee_pos)
@@ -65,12 +61,18 @@ class ConsistentTaskSpaceController:
             C = np.concatenate([C_tau, C_cbf])
             c = np.concatenate([c_tau, c_cbf])
 
+            print("h, hdot : ", self.h(self.env.ee_pos), self.h_dot(self.env.ee_pos))
+
         else:
             C, c = self.get_ineq_constraint(150)
 
+        H += np.identity(H.shape[0]) + 1e-5
+
         J = np.concatenate([self.env.jacp, self.env.jacr])
 
-        solution = solve_qp(P=H, q=g, G=C, h=c, solver="cvxopt", verbose=True)
+        solution = solve_qp(P=H, q=g, G=C, h=c, solver="cvxopt", verbose=False)
+
+        print("CBF ineq : ", )
 
         tau = J.T @ solution
 

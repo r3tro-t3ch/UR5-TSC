@@ -106,13 +106,13 @@ if __name__ == "__main__":
     # cbf
     args['cbf']             = True
     args['obstacle_pos']    = np.array([0.55, 0.35, 0.75])
-    args['obstacle_r']      = 0.1
-    args['alpha']           = np.array([1,1])
+    args['obstacle_r']      = 0.01
+    args['alpha']           = np.array([1,3])
 
     args['pos_task_mode'] = 'track'
     args['ori_task_mode'] = 'track'
 
-    args['T'] = 5
+    args['T'] = 10
 
     args['pos_task_weight'] = 1
     args['pos_task_kp_track'] = 600

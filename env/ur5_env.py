@@ -3,6 +3,7 @@ import mujoco_viewer
 import numpy as np
 import os
 from utils.utils import quat2euler
+from scipy.linalg import null_space
 
 class UR5Env:
 
@@ -50,8 +51,13 @@ class UR5Env:
         self.ee_w = None
 
         # position and orientation jacobian
-        self.jacp = np.zeros((3, self.model.nv))
-        self.jacr = np.zeros((3, self.model.nv))
+        self.jacp       = np.zeros((3, self.model.nv))
+        self.jacp_prev  = np.zeros((3, self.model.nv))
+        self.jacp_dot   = np.zeros((3, self.model.nv))
+        
+        self.jacr       = np.zeros((3, self.model.nv))
+        self.jacr_prev  = np.zeros((3, self.model.nv))
+        self.jacr_dot   = np.zeros((3, self.model.nv))
 
         # mass matrix, coriolis and gravity vector
         self.M    = np.zeros((self.model.nv,self.model.nv))
@@ -102,6 +108,13 @@ class UR5Env:
 
         self.Lambda  = np.linalg.inv(self.Lambda_inv)
         self.mu     = self.Lambda @ J @ M_inv @ self.C
+
+        # update jacobians
+        self.jacp_dot   = (self.jacp - self.jacp_prev)/self.model.opt.timestep
+        self.jacr_dot   = (self.jacr - self.jacr_prev)/self.model.opt.timestep
+
+        self.jacp_prev  = np.copy(self.jacp)
+        self.jacr_prev  = np.copy(self.jacr)
 
         # update pos and vel
         self.ee_pos     = self.data.site_xpos[self.BodyIndex.EE_SITE]
