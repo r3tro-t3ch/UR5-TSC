@@ -23,6 +23,8 @@ class ArmController:
 
         self.init           = True
 
+        self.T              = args['T']
+
         if self.cbf:
             self.obstacle   = np.array([*args['obstacle_pos'], *np.zeros((3,))])
             self.obstacle_r = args['obstacle_r']
@@ -30,16 +32,7 @@ class ArmController:
 
             self.tsc = ConsistentTaskSpaceController(self.env, self.obstacle, self.alpha, self.obstacle_r, self.cbf)
             
-            # self.traj_handler = TrajectoryGenerator3rdOrderMidPoint(self.dt)
-            # self.traj_handler.reset_3rd_order_trajectory(
-            #     self.env.ee_pos,
-            #     self.des_pos,
-            #     self.obstacle[:3],
-            #     np.zeros(3),
-            #     np.zeros(3),
-            #     np.zeros(3),
-            #     args['T'],
-            # )
+            
         else:
             self.tsc = ConsistentTaskSpaceController(self.env)
             
@@ -67,7 +60,7 @@ class ArmController:
                 self.des_pos,
                 np.zeros(3),
                 np.zeros(3),
-                10
+                self.T
             )
             self.init = False
         

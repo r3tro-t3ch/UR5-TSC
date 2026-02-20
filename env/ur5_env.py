@@ -137,7 +137,7 @@ class UR5Env:
         if self.cbf:
             self.viewer.add_marker(
             pos=self.obstacle[:3], 
-            size=np.ones((3,)) * self.obstacle_r, 
+            size=np.ones((3,)) * 0.05, 
             rgba=[1, 1, 1, 1], 
             type=mj.mjtGeom.mjGEOM_SPHERE, 
             label="obstacle")

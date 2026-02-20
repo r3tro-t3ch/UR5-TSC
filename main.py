@@ -14,8 +14,6 @@ def main(args):
     
 
     while env.is_alive:
-        print(env.model.keyframe("home"))
-
         env.step(torq)
         torq = controller.get_action()
         controller._log_data()
@@ -106,15 +104,15 @@ if __name__ == "__main__":
     args['des_ori_q'] = np.array([1, 0.0, 0.0, 0])
 
     # cbf
-    args['cbf']             = False
-    args['obstacle_pos']    = np.array([0.2, 0.7, 0.5])
-    args['obstacle_r']      = 0.05
-    args['alpha']           = np.array([0.1,0.1])
+    args['cbf']             = True
+    args['obstacle_pos']    = np.array([0.55, 0.35, 0.75])
+    args['obstacle_r']      = 0.1
+    args['alpha']           = np.array([1,1])
 
     args['pos_task_mode'] = 'track'
     args['ori_task_mode'] = 'track'
 
-    args['T'] = 5
+    args['T'] = 2
 
     args['pos_task_weight'] = 1
     args['pos_task_kp_track'] = 800
