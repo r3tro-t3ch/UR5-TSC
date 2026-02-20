@@ -104,7 +104,7 @@ if __name__ == "__main__":
     args['des_ori_q'] = np.array([1, 0.0, 0.0, 0])
 
     # cbf
-    args['cbf']             = True
+    args['cbf']             = False
     args['obstacle_pos']    = np.array([0.55, 0.35, 0.75])
     args['obstacle_r']      = 0.1
     args['alpha']           = np.array([1,1])
@@ -115,8 +115,8 @@ if __name__ == "__main__":
     args['T'] = 2
 
     args['pos_task_weight'] = 1
-    args['pos_task_kp_track'] = 800
-    args['pos_task_kd_track'] = 80
+    args['pos_task_kp_track'] = 600
+    args['pos_task_kd_track'] = 60
     args['pos_task_kd_damp'] = 20
 
     args['ori_task_weight'] = 1

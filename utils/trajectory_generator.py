@@ -78,7 +78,7 @@ class TrajectoryGenerator3rdOrderMidPoint:
         self.coeff_x_3rd_order    = np.zeros((4,))
         self.coeff_y_3rd_order    = np.zeros((4,))
 
-    def reset_3rd_order_trajectory(self,start_pos : np.ndarray, end_pos : np.ndarray, mid_pos : np.ndarray, start_vel : np.ndarray, end_vel : np.ndarray, mid_vel : np.ndarray, T):
+    def reset_trajectory(self,start_pos : np.ndarray, end_pos : np.ndarray, mid_pos : np.ndarray, start_vel : np.ndarray, end_vel : np.ndarray, mid_vel : np.ndarray, T):
         x_0, y_0, z_0       = start_pos
         x_T, y_T, z_T       = end_pos
         x_M, y_M, z_M       = mid_pos

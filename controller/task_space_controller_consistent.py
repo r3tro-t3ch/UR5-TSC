@@ -16,7 +16,7 @@ class ConsistentTaskSpaceController:
         if self.cbf:
             self.obstacle   = obstacle
             self.alpha      = alpha
-            self.obstacle_r = np.array([1,1,1,0,0,0]) * obstacle_r
+            self.obstacle_r = obstacle_r
     
     def get_ineq_constraint(self, tau_max):
 
@@ -30,27 +30,28 @@ class ConsistentTaskSpaceController:
     
     def h(self, x):
         # h(x) = (x - x_o)^2 - r
-        return (x - self.obstacle).T @ (x - self.obstacle) - self.obstacle_r
+        return (x - self.obstacle).T @ (x - self.obstacle) - self.obstacle_r**2
 
     def h_x(self, x):
         return 2*(x - self.obstacle)
 
     def h_dot(self, x):
         # h2(x) = Lfh(x) + alpha_1(h) 
-        v = np.concatenate([self.env.ee_vel, self.env.ee_w])
+        # v = np.concatenate([self.env.ee_vel, self.env.ee_w])
+        v = self.env.ee_vel
         return self.h_x(x).T @ v + self.alpha[0] * self.h(x)
 
     def get_cbf_ineq_constraints(self, x):
         # Lf^2 h(x) + LgLf h(x) >= -alpha_2(h2(x))
         # -Lambda_inv f <= \alpha_2 h_dot - \Lambda_inv \mu
-        v = np.concatenate([self.env.ee_vel, self.env.ee_w])
+        # v = np.concatenate([self.env.ee_vel, self.env.ee_w])
+        v = self.env.ee_vel
 
-        C_cbf = - self.h_x(x).T @ self.env.Lambda_inv
-        c_cbf = - self.h_x(x).T @ self.env.Lambda_inv @ self.env.mu \
+        C_cbf = - self.h_x(x).T @ self.env.Lambda_inv[:3,:]
+        c_cbf = - self.h_x(x).T @ (self.env.Lambda_inv @ self.env.mu)[:3] \
                 + 2 * v.T @ v \
                 - self.alpha[0] * self.h_x(x).T @ v \
-                - self.alpha[1] * self.h_x(x).T @ v \
-                - np.prod(self.alpha) * self.h(x)[0]
+                - self.alpha[1] * self.h_dot(x)
 
         return C_cbf[np.newaxis, :], np.array([c_cbf])
     
@@ -59,9 +60,7 @@ class ConsistentTaskSpaceController:
 
         if self.cbf:
             C_tau, c_tau = self.get_ineq_constraint(150)
-            C_cbf, c_cbf = self.get_cbf_ineq_constraints(np.array([*self.env.ee_pos, *np.zeros((3,))]))
-
-            print(C_cbf, c_cbf)
+            C_cbf, c_cbf = self.get_cbf_ineq_constraints(self.env.ee_pos)
 
             C = np.concatenate([C_tau, C_cbf])
             c = np.concatenate([c_tau, c_cbf])
