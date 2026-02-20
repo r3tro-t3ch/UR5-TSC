@@ -78,7 +78,7 @@ def main(args):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')  # 111 = 1x1 grid, first subplot
     if env.cbf:
-        ax.scatter(*env.obstacle[:3], label="obstacle", s=env.obstacle_r*2000)
+        ax.scatter(*env.obstacle[:3], label="obstacle")
     ax.plot(ee_pos_x, ee_pos_y, ee_pos_z, label='ee position', color='b')
     ax.plot(ee_pos_x_ref, ee_pos_y_ref, ee_pos_z_ref, label='ee position ref', color='pink')
     ax.set_xlabel('X axis')
@@ -104,7 +104,7 @@ if __name__ == "__main__":
     args['des_ori_q'] = np.array([1, 0.0, 0.0, 0])
 
     # cbf
-    args['cbf']             = False
+    args['cbf']             = True
     args['obstacle_pos']    = np.array([0.55, 0.35, 0.75])
     args['obstacle_r']      = 0.1
     args['alpha']           = np.array([1,1])
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     args['pos_task_mode'] = 'track'
     args['ori_task_mode'] = 'track'
 
-    args['T'] = 2
+    args['T'] = 5
 
     args['pos_task_weight'] = 1
     args['pos_task_kp_track'] = 600

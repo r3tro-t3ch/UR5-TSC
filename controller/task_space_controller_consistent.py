@@ -30,7 +30,7 @@ class ConsistentTaskSpaceController:
     
     def h(self, x):
         # h(x) = (x - x_o)^2 - r
-        return (x - self.obstacle).T @ (x - self.obstacle) - self.obstacle_r**2
+        return (x - self.obstacle).T @ (x - self.obstacle) - self.obstacle_r
 
     def h_x(self, x):
         return 2*(x - self.obstacle)

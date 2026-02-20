@@ -34,7 +34,7 @@ class UR5Env:
         self.cbf            = args['cbf']
 
         if self.cbf:
-            self.obstacle   = np.array([*args['obstacle_pos'], *np.zeros((3,))])
+            self.obstacle   = args['obstacle_pos']
             self.obstacle_r = args['obstacle_r']
             self.alpha      = args['alpha']
 
@@ -136,7 +136,7 @@ class UR5Env:
     def add_obstacle(self,):
         if self.cbf:
             self.viewer.add_marker(
-            pos=self.obstacle[:3], 
+            pos=self.obstacle, 
             size=np.ones((3,)) * 0.05, 
             rgba=[1, 1, 1, 1], 
             type=mj.mjtGeom.mjGEOM_SPHERE, 
