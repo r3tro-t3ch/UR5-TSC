@@ -60,8 +60,9 @@ class UR5Env:
         self.jacr_dot   = np.zeros((3, self.model.nv))
 
         # mass matrix, coriolis and gravity vector
-        self.M    = np.zeros((self.model.nv,self.model.nv))
-        self.C    = np.zeros((self.model.nv,))
+        self.M      = np.zeros((self.model.nv,self.model.nv))
+        self.M_inv  = np.zeros((self.model.nv,self.model.nv))
+        self.C      = np.zeros((self.model.nv,))
 
         # Task space dynamics
         self.Lambda     = np.zeros((6, 6))
@@ -100,14 +101,14 @@ class UR5Env:
 
         # update task space dynamics
         J = np.concatenate([self.jacp, self.jacr])
-        M_inv = np.linalg.inv(self.M)
+        self.M_inv = np.linalg.inv(self.M)
 
-        self.Lambda_inv = J @ M_inv @ J.T
+        self.Lambda_inv = J @ self.M_inv @ J.T
 
         self.Lambda_inv += 1e-3 * np.eye(6)
 
         self.Lambda  = np.linalg.inv(self.Lambda_inv)
-        self.mu     = self.Lambda @ J @ M_inv @ self.C
+        self.mu     = self.Lambda @ J @ self.M_inv @ self.C
 
         # update jacobians
         self.jacp_dot   = (self.jacp - self.jacp_prev)/self.model.opt.timestep

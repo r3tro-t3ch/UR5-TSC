@@ -12,7 +12,6 @@ def main(args):
 
     env.data.qpos = env.model.keyframe("home").qpos
     
-
     while env.is_alive:
         env.step(torq)
         torq = controller.get_action()
@@ -106,23 +105,24 @@ if __name__ == "__main__":
     # cbf
     args['cbf']             = True
     args['obstacle_pos']    = np.array([0.55, 0.35, 0.75])
-    args['obstacle_r']      = 0.01
-    args['alpha']           = np.array([1,3])
+    args['obstacle_r']      = 0.15
+    args['alpha']           = np.array([2,20])
 
-    args['pos_task_mode'] = 'track'
-    args['ori_task_mode'] = 'track'
+    args['pose_task_mode']  = 'track'
+    args['q_task_mode']     = 'damp'
 
-    args['T'] = 10
+    args['T'] = 5
 
-    args['pos_task_weight'] = 1
-    args['pos_task_kp_track'] = 600
-    args['pos_task_kd_track'] = 60
-    args['pos_task_kd_damp'] = 20
+    args['pose_task_weight'] = 10
+    args['pose_task_kp_track'] = 800
+    args['pose_task_kd_track'] = 80
+    args['pose_task_kd_damp'] = 20
 
-    args['ori_task_weight'] = 1
-    args['ori_task_kp_track'] = 10
-    args['ori_task_kd_track'] = 1
-    args['ori_task_kd_damp'] = 20
+
+    args['q_task_weight'] = 1
+    args['q_task_kp_track'] = 400
+    args['q_task_kd_track'] = 40
+    args['q_task_kd_damp'] = 40
 
 
     main(args)

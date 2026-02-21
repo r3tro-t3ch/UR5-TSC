@@ -65,12 +65,12 @@ class EEOrientationTask():
     
 class TaskConsistantEETask:
 
-    def __init__(self,env : UR5Env,w=1,Kp_track=800,Kd_track=20,Kd_damp=20):
+    def __init__(self,env : UR5Env,w=10,Kp_track=800,Kd_track=20,Kd_damp=20):
         self.env = env
         self.Kp_track   = Kp_track*np.diag([1,1,1,1,1,1])
         self.Kd_track   = Kd_track*np.diag([1,1,1,1,1,1])
         self.Kd_damp    = Kd_damp*np.diag([1,1,1,1,1,1])
-        self.Q          = np.identity(6) * w
+        self.Q          = w * np.diag([1,1,1,2,2,2])
 
     def get_cost(self,ee_pos_ref=np.zeros(3,),ee_vel_ref=np.zeros(3,),ee_acc_ref=np.zeros(3,), ee_q_ref=np.zeros(3,),ee_w_ref=np.zeros(3,),ee_wdot_ref=np.zeros(3,),mode='track'):
 
@@ -90,7 +90,7 @@ class TaskConsistantEETask:
         g = -f_d.T @ self.Q
         H = self.Q
 
-        return H,g
+        return H, g, f_d
 
     def get_euler_error(self, q, q_d):
         return quat2euler(q_d) - quat2euler(q)
@@ -101,3 +101,36 @@ class TaskConsistantEETask:
         q_d_x = skew_symmetric(a)
         e = q[0]*a - q_d[0]*b - q_d_x @ b
         return e
+
+
+class TaskConsistantJointTask:
+
+    def __init__(self, env : UR5Env, w=1, Kp_track=100, Kd_track=10, Kd_damp=10):
+
+        self.env = env
+        self.Kp_track   = np.identity(env.model.nu) * Kp_track
+        self.Kd_track   = np.identity(env.model.nu) * Kd_track
+        self.Kd_damp    = np.identity(env.model.nu) * Kd_damp
+        
+        self.Q          = np.identity(6) * w
+
+    def get_cost(self, q_pos_ref, q_vel_ref, mode="track"):
+
+        delta_pos_ref   = q_pos_ref - self.env.data.qpos
+        delta_vel_ref   = q_vel_ref - self.env.data.qvel
+
+        if mode == "track":
+            q_ddot_ref  = self.Kp_track @ (delta_pos_ref) + self.Kd_track @ (delta_vel_ref)
+        elif mode == "damp":
+            q_ddot_ref  = self.Kd_damp @ (delta_vel_ref)
+
+        J = np.concatenate([self.env.jacp, self.env.jacr])
+
+        Gamma   = self.env.Lambda @ J
+
+        f_d = Gamma @ q_ddot_ref + self.env.mu
+
+        g = -f_d.T @ self.Q
+        H = self.Q
+
+        return H,g

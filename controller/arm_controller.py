@@ -12,18 +12,18 @@ class ArmController:
         self.time = 0
         self.dt = self.env.model.opt.timestep
 
-        self.des_pos = args['des_pos']
-        self.des_ori_q = args['des_ori_q']
-        self.des_ori_euler = quat2euler(self.des_ori_q)
+        self.des_pos        = args['des_pos']
+        self.des_ori_q      = args['des_ori_q']
+        self.des_ori_euler  = quat2euler(self.des_ori_q)
 
-        self.pos_task_mode = args['pos_task_mode']
-        self.ori_task_mode = args['ori_task_mode']
+        self.pose_task_mode = args['pose_task_mode']
+        self.q_task_mode    = args['q_task_mode']
+        self.T              = args['T']
 
         self.cbf            = args['cbf']
 
         self.init           = True
 
-        self.T              = args['T']
 
         if self.cbf:
             # self.obstacle   = np.array([*args['obstacle_pos'], *np.zeros((3,))])
@@ -43,31 +43,25 @@ class ArmController:
     
         self.task = TaskConsistantEETask(
             self.env,
-            w=args['ori_task_weight'],
-            Kp_track=args['pos_task_kp_track'],
-            Kd_track=args['pos_task_kd_track'],
-            Kd_damp=args['pos_task_kd_damp']
+            w=args['pose_task_weight'],
+            Kp_track=args['pose_task_kp_track'],
+            Kd_track=args['pose_task_kd_track'],
+            Kd_damp=args['pose_task_kd_damp']
         )
 
-
-        
+        self.q_task = TaskConsistantJointTask(
+            self.env,
+            w=args['q_task_weight'],
+            Kp_track=args['q_task_kp_track'],
+            Kd_track=args['q_task_kd_track'],
+            Kd_damp=args['q_task_kd_damp'],
+        )
 
         self.logger = Logger()
 
     def get_action(self):
 
         if self.init:
-            # if self.cbf:
-            #     self.traj_handler.reset_trajectory(
-            #         self.env.ee_pos,
-            #         self.des_pos,
-            #         self.obstacle,
-            #         np.zeros(3),
-            #         np.zeros(3),
-            #         np.zeros(3),
-            #         self.T
-            #     )
-            # else:
             self.traj_handler.reset_trajectory(
                 self.env.ee_pos,
                 self.des_pos,
@@ -79,17 +73,26 @@ class ArmController:
         
         self.traj_pos, vel, acc = self.traj_handler.get_trajectory()
 
-        H,g = self.task.get_cost(
+        # qH, qg = self.q_task.get_cost(
+        #     np.array(self.env.model.keyframe("home").qpos),
+        #     np.zeros((self.env.model.nu,)),
+        #     self.q_task_mode
+        # )
+
+        _, _,f_d = self.task.get_cost(
             self.traj_pos,
             vel,
             acc,
             self.des_ori_q,
             np.zeros(3),
             np.zeros(3),
-            self.pos_task_mode
+            self.pose_task_mode
         )
 
-        tau = self.tsc.get_action(g, H)
+        # H = qH + pH
+        # g = qg + pg
+
+        tau = self.tsc.get_action(f_d)
 
         self.time += self.dt
 
