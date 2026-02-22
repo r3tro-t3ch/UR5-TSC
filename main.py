@@ -105,24 +105,25 @@ if __name__ == "__main__":
     # cbf
     args['cbf']             = True
     args['obstacle_pos']    = np.array([0.55, 0.35, 0.75])
-    args['obstacle_r']      = 0.15
+    args['obstacle_r']      = 0.1
     args['alpha']           = np.array([2,20])
 
-    args['pose_task_mode']  = 'track'
-    args['q_task_mode']     = 'damp'
+    args['position_task_mode']      = 'track'
+    args['orientation_task_mode']   = 'track'
 
     args['T'] = 5
 
-    args['pose_task_weight'] = 10
-    args['pose_task_kp_track'] = 800
-    args['pose_task_kd_track'] = 80
-    args['pose_task_kd_damp'] = 20
+    args['position_task_weight']    = 1
+    args['position_task_kp_track']  = 600
+    args['position_task_kd_track']  = 60
+    args['position_task_kd_damp']   = 20
 
+    args['orientation_task_weight']     = 2
+    args['orientation_task_kp_track']   = 600
+    args['orientation_task_kd_track']   = 60
+    args['orientation_task_kd_damp']    = 20
 
-    args['q_task_weight'] = 1
-    args['q_task_kp_track'] = 400
-    args['q_task_kd_track'] = 40
-    args['q_task_kd_damp'] = 40
-
+    args['controller_type']             = 'inconsistent'
+    # args['controller_type']             = 'consistent'
 
     main(args)

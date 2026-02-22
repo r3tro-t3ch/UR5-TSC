@@ -1,5 +1,6 @@
 from controller.task_space_objective import *
-from controller.task_space_controller_consistent import ConsistentTaskSpaceController
+from controller.tsc_consistent import ConsistentTaskSpaceController
+from controller.tsc_inconsistent import InconsistentTaskSpaceController
 from utils.data_logger import Logger
 from env.ur5_env import UR5Env
 from utils.trajectory_generator import TrajectoryGenerator, TrajectoryGenerator3rdOrderMidPoint
@@ -16,46 +17,62 @@ class ArmController:
         self.des_ori_q      = args['des_ori_q']
         self.des_ori_euler  = quat2euler(self.des_ori_q)
 
-        self.pose_task_mode = args['pose_task_mode']
-        self.q_task_mode    = args['q_task_mode']
+        self.pos_task_mode  = args['position_task_mode']
+        self.ori_task_mode  = args['orientation_task_mode']
+
         self.T              = args['T']
 
         self.cbf            = args['cbf']
 
         self.init           = True
 
+        self.type           = args['controller_type']
 
         if self.cbf:
-            # self.obstacle   = np.array([*args['obstacle_pos'], *np.zeros((3,))])
             self.obstacle   = np.array(args['obstacle_pos'])
             self.obstacle_r = args['obstacle_r']
             self.alpha      = args['alpha']
 
-            self.tsc = ConsistentTaskSpaceController(self.env, self.obstacle, self.alpha, self.obstacle_r, self.cbf)
-            
-            # self.traj_handler = TrajectoryGenerator3rdOrderMidPoint(self.dt)
-            
-        else:
-            self.tsc = ConsistentTaskSpaceController(self.env)
+        if self.type == "consistent":
+            if self.cbf:
+                self.tsc = ConsistentTaskSpaceController(self.env, self.obstacle, self.alpha, self.obstacle_r, self.cbf)
+            else:
+                self.tsc = ConsistentTaskSpaceController(self.env)
+
+            self.task = TaskConsistantEETask(
+                self.env,
+                Kp_track_pos=args['position_task_kp_track'],
+                Kd_track_pos=args['position_task_kd_track'],
+                Kd_damp_pos=args['position_task_kd_damp'],
+                Kp_track_ori=args['orientation_task_kp_track'],
+                Kd_track_ori=args['orientation_task_kd_track'],
+                Kd_damp_ori=args['orientation_task_kd_damp']
+            )
+
+        elif self.type == "inconsistent":
+            if self.cbf:
+                self.tsc = InconsistentTaskSpaceController(self.env, self.obstacle, self.alpha, self.obstacle_r, self.cbf)
+            else:
+                self.tsc = InconsistentTaskSpaceController(self.env)
         
+            self.position_task = EEPositionTask(
+                self.env,
+                w=args['position_task_weight'],
+                Kp_track=args['position_task_kp_track'],
+                Kd_track=args['position_task_kd_track'],
+                Kd_damp=args['position_task_kd_damp'],
+            )
+
+            self.orientation_task = EEOrientationTask(
+                self.env,
+                w=args['orientation_task_weight'],
+                Kp_track=args['orientation_task_kp_track'],
+                Kd_track=args['orientation_task_kd_track'],
+                Kd_damp=args['orientation_task_kd_damp']
+            )
+
         self.traj_handler = TrajectoryGenerator(self.dt)
         
-    
-        self.task = TaskConsistantEETask(
-            self.env,
-            w=args['pose_task_weight'],
-            Kp_track=args['pose_task_kp_track'],
-            Kd_track=args['pose_task_kd_track'],
-            Kd_damp=args['pose_task_kd_damp']
-        )
-
-        self.q_task = TaskConsistantJointTask(
-            self.env,
-            w=args['q_task_weight'],
-            Kp_track=args['q_task_kp_track'],
-            Kd_track=args['q_task_kd_track'],
-            Kd_damp=args['q_task_kd_damp'],
-        )
 
         self.logger = Logger()
 
@@ -73,26 +90,40 @@ class ArmController:
         
         self.traj_pos, vel, acc = self.traj_handler.get_trajectory()
 
-        # qH, qg = self.q_task.get_cost(
-        #     np.array(self.env.model.keyframe("home").qpos),
-        #     np.zeros((self.env.model.nu,)),
-        #     self.q_task_mode
-        # )
 
-        _, _,f_d = self.task.get_cost(
-            self.traj_pos,
-            vel,
-            acc,
-            self.des_ori_q,
-            np.zeros(3),
-            np.zeros(3),
-            self.pose_task_mode
-        )
 
-        # H = qH + pH
-        # g = qg + pg
+        if self.type == 'consistent':
+            f_d = self.task.get_cost(
+                self.traj_pos,
+                vel,
+                acc,
+                self.des_ori_q,
+                np.zeros(3),
+                np.zeros(3),
+                self.pos_task_mode
+            )
 
-        tau = self.tsc.get_action(f_d)
+            tau = self.tsc.get_action(f_d)
+        elif self.type == 'inconsistent':
+
+            H_pos, g_pos = self.position_task.get_cost(
+                self.traj_pos,
+                vel,
+                acc,
+                self.pos_task_mode
+            )
+
+            H_ori, g_ori = self.orientation_task.get_cost(
+                self.des_ori_q,
+                np.zeros(3),
+                np.zeros(3),
+                self.ori_task_mode
+            )
+
+            H = H_pos + H_ori
+            g = g_pos + g_ori
+
+            _, tau = self.tsc.get_action(g, H)
 
         self.time += self.dt
 

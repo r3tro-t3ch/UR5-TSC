@@ -65,32 +65,57 @@ class EEOrientationTask():
     
 class TaskConsistantEETask:
 
-    def __init__(self,env : UR5Env,w=10,Kp_track=800,Kd_track=20,Kd_damp=20):
+    def __init__(self,
+                 env : UR5Env,
+                 Kp_track_pos=800,
+                 Kd_track_pos=20,
+                 Kd_damp_pos=20,
+                 Kp_track_ori=800,
+                 Kd_track_ori=20,
+                 Kd_damp_ori=20):
+        
         self.env = env
-        self.Kp_track   = Kp_track*np.diag([1,1,1,1,1,1])
-        self.Kd_track   = Kd_track*np.diag([1,1,1,1,1,1])
-        self.Kd_damp    = Kd_damp*np.diag([1,1,1,1,1,1])
-        self.Q          = w * np.diag([1,1,1,2,2,2])
+        self.Kp_track   = np.diag([Kp_track_pos,Kp_track_pos,Kp_track_pos,Kp_track_ori,Kp_track_ori,Kp_track_ori])
+        self.Kd_track   = np.diag([Kd_track_pos,Kd_track_pos,Kd_track_pos,Kd_track_ori,Kd_track_ori,Kd_track_ori])
+        self.Kd_damp    = np.diag([Kd_damp_pos,Kd_damp_pos,Kd_damp_pos,Kd_damp_ori,Kd_damp_ori,Kd_damp_ori])
 
-    def get_cost(self,ee_pos_ref=np.zeros(3,),ee_vel_ref=np.zeros(3,),ee_acc_ref=np.zeros(3,), ee_q_ref=np.zeros(3,),ee_w_ref=np.zeros(3,),ee_wdot_ref=np.zeros(3,),mode='track'):
+    def get_cost(self,
+                 ee_pos_ref=np.zeros(3,),
+                 ee_vel_ref=np.zeros(3,),
+                 ee_acc_ref=np.zeros(3,), 
+                 ee_q_ref=np.zeros(3,),
+                 ee_w_ref=np.zeros(3,),
+                 ee_wdot_ref=np.zeros(3,),
+                 pos_mode='track',
+                 ori_mode='track'):
 
-        ee_dot_ref      = np.concatenate([ee_vel_ref, ee_w_ref])
-        ee_ddot_ref     = np.concatenate([ee_acc_ref, ee_wdot_ref])
+        ee_pos_dot_ref  = ee_vel_ref
+        ee_ori_dot_ref  = ee_w_ref
+        
+        ee_pos_ddot_ref = ee_acc_ref
+        ee_ori_ddot_ref = ee_wdot_ref
 
-        delta_ee        = np.concatenate([ee_pos_ref - self.env.ee_pos, self.get_quat_error(self.env.ee_q, ee_q_ref)])
-        delta_ee_dot    = ee_dot_ref - np.concatenate([self.env.ee_vel, self.env.ee_w])
+        delta_ee_pos        = ee_pos_ref - self.env.ee_pos if pos_mode == "track" else np.zeros((3,))
+        delta_ee_ori        = self.get_quat_error(self.env.ee_q, ee_q_ref) if ori_mode == "track" else np.zeros((3,))
 
-        if mode == "track":
-            x_ddot_ref = ee_ddot_ref + self.Kd_track @ (delta_ee_dot) + self.Kp_track @ delta_ee
-        elif mode == "damp":
-            x_ddot_ref = ee_ddot_ref + self.Kd_damp @ (delta_ee_dot)
+        delta_ee            = np.concatenate([delta_ee_pos, delta_ee_ori])
+
+        delta_ee_pos_dot    = ee_pos_dot_ref - self.env.ee_vel
+        delta_ee_ori_dot    = ee_ori_dot_ref - self.env.ee_w
+
+        delta_ee_dot        = np.concatenate([delta_ee_pos_dot, delta_ee_ori_dot])
+
+        Kd = np.zeros((6,6))
+        Kd[:3,:3]   = self.Kd_track[:3,:3] if pos_mode == "track" else self.Kd_damp[:3,:3] 
+        Kd[3:,3:]   = self.Kd_track[3:,3:] if ori_mode == "track" else self.Kd_damp[3:,3:] 
+
+        ee_ddot_ref = np.concatenate([ee_pos_ddot_ref, ee_ori_ddot_ref])
+        
+        x_ddot_ref  = ee_ddot_ref + Kd @ delta_ee_dot + self.Kp_track @ delta_ee
 
         f_d = self.env.Lambda @ x_ddot_ref + self.env.mu
 
-        g = -f_d.T @ self.Q
-        H = self.Q
-
-        return H, g, f_d
+        return f_d
 
     def get_euler_error(self, q, q_d):
         return quat2euler(q_d) - quat2euler(q)
