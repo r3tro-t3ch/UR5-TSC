@@ -1,6 +1,5 @@
 
 import numpy as np
-# import qpSWIFT as qp
 from env.ur5_env import UR5Env
 from qpsolvers import solve_qp
 from .cbf import CBF

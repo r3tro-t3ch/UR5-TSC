@@ -4,10 +4,10 @@ from mpl_toolkits.mplot3d import Axes3D
 
 def main(args):
     from env.ur5_env import UR5Env
-    from controller.arm_controller import ArmController
+    from controller.arm_controller_clf import CLFArmController
     
     env = UR5Env(args)
-    controller = ArmController(env, args)
+    controller = CLFArmController(env, args)
     torq = np.zeros((6,))
 
     env.data.qpos = env.model.keyframe("home").qpos
@@ -99,31 +99,19 @@ if __name__ == "__main__":
     args['cam_ele']     = -20
     args['cam_dist']    =  5
 
-    args['des_pos']     = np.array([0.6,0.6,0.6])
+    args['des_pos']     = np.array([-0.6,0.4,0.2])
     args['des_ori_q']   = np.array([1, 0.0, 0.0, 0.0])
 
-    # cbf
-    args['cbf']             = True
-    args['obstacle_pos']    = np.array([0.55, 0.35, 0.75])
-    args['obstacle_r']      = 0.1
-    args['alpha']           = np.array([50,100])
+    # clf
+    args['alpha']           = 1
+    args['cbf']             = False
 
-    args['position_task_mode']      = 'track'
-    args['orientation_task_mode']   = 'track'
+    args['P']               = np.diag([100,100,100,100,100,100])
+    args['Q']               = np.diag([10,10,10,10,10,10])
 
-    args['T'] = 5
 
-    args['position_task_weight']    = 1
-    args['position_task_kp_track']  = 600
-    args['position_task_kd_track']  = 60
-    args['position_task_kd_damp']   = 20
+    args['T']               = 5
+    args['tau_max']         = 150
 
-    args['orientation_task_weight']     = 2
-    args['orientation_task_kp_track']   = 600
-    args['orientation_task_kd_track']   = 60
-    args['orientation_task_kd_damp']    = 20
-
-    # args['controller_type']             = 'inconsistent'
-    args['controller_type']             = 'consistent'
 
     main(args)
