@@ -38,6 +38,18 @@ def main(args):
     ee_ori_y_ref = log_data.data['ee_ori_y_ref']
     ee_ori_z_ref = log_data.data['ee_ori_z_ref']
 
+    tau = np.array(log_data.data['tau'])
+
+    plt.figure()
+    plt.plot(times, tau[:,0])
+    plt.plot(times, tau[:,1])
+    plt.plot(times, tau[:,2])
+    plt.plot(times, tau[:,3])
+    plt.plot(times, tau[:,4])
+    plt.plot(times, tau[:,5])
+    # plt.legend([    ])
+
+
     plt.figure()
     plt.plot(times, ee_pos_x)
     plt.plot(times, ee_pos_x_ref)

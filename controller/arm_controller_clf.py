@@ -26,6 +26,8 @@ class CLFArmController:
         self.alpha      = args['alpha']
         self.tau_max    = args['tau_max']
 
+        self.tau        = np.zeros((self.env.model.nu,))
+
         self.tsc = CLFTaskSpaceController(
             env,
             self.alpha,
@@ -62,6 +64,8 @@ class CLFArmController:
             np.identity(6)
         )
 
+        self.tau = tau
+
         self.time += self.dt
 
         return tau
@@ -93,6 +97,8 @@ class CLFArmController:
             'ee_ori_x'  : self.env.ee_euler[0],
             'ee_ori_y'  : self.env.ee_euler[1],
             'ee_ori_z'  : self.env.ee_euler[2],
+
+            'tau'       : self.tau
 
         }
 

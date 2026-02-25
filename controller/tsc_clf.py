@@ -42,14 +42,14 @@ class CLFTaskSpaceController:
 
         return C,c
     
-    def get_action(self, tau_max, x_d, xdot_d, delta_q, w_d, Q):
+    def get_action(self, tau_max, x_d, xdot_d, delta_q, w_d, W):
 
         C, c = self.get_ineq_constraint(tau_max, x_d, xdot_d, delta_q, w_d)
 
-        H = Q + np.identity(Q.shape[0]) * 1e-4
+        H = W + np.identity(W.shape[0]) * 1e-4
         g = np.zeros((self.env.model.nu,))
 
-        tau = solve_qp(P=H, q=g, G=C, h=c, solver="cvxopt", verbose=True)
+        tau = solve_qp(P=H, q=g, G=C, h=c, solver="cvxopt", verbose=False)
 
         return tau
     

@@ -36,6 +36,8 @@ class CLF:
         _x_dot      = np.concatenate([xdot, w])
         _x_dot_d    = np.concatenate([xdot_d, w_d])
 
+        print("e_dot : ",(_x_dot_d - _x_dot))
+
         return 2 * delta_x.T @ self.P @ J, 2 * (_x_dot_d - _x_dot).T @ self.Q @ J
 
     def V_dot(self,
@@ -105,10 +107,5 @@ class CLF:
         C_clf = LgV
 
         c_clf = -self.alpha * V - LfV
-
-        print("delta_q", delta_q)
-        print("LgV", LgV)
-        print("LfV", LfV)
-        print("V", V)
 
         return C_clf[np.newaxis, :], np.array([c_clf])
