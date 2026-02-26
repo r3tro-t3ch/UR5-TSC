@@ -1,7 +1,7 @@
 import numpy as np
 from env.ur5_env import UR5Env
 from qpsolvers import solve_qp
-from .clf import CLF
+from .clf import TSCLF as CLF
 
 class CLFTaskSpaceController:
 
@@ -11,18 +11,20 @@ class CLFTaskSpaceController:
         self.env        = env
         self.clf_filter = CLF(P,Q,alpha)
 
-    def get_ineq_constraint(self, tau_max, x_d, xdot_d, delta_q, w_d):
+    def get_ineq_constraint(self, tau_max, x_d, xdot_d, delta_q, w_d, x_ddot_d):
 
         # Joint torque constraint
+        J = np.concatenate([self.env.jacp, self.env.jacr])
+        # C_tau = np.concatenate(
+        #     [np.identity(6), -np.identity(6)]
+        # )
         C_tau = np.concatenate(
-            [np.identity(6), -np.identity(6)]
+            [J.T, -J.T]
         )
         c_tau = np.ones((self.env.model.nu * 2,)) * tau_max
         
 
         # CLF constraints
-        J = np.concatenate([self.env.jacp, self.env.jacr])
-
         C_clf, c_clf = self.clf_filter.get_clf_ineq_constraints(
             self.env.ee_pos,
             x_d,
@@ -31,22 +33,21 @@ class CLFTaskSpaceController:
             delta_q,
             self.env.ee_w,
             w_d,
-            J,
-            self.env.M_inv,
-            self.env.C,
-            self.env.data.qvel
-        )
+            x_ddot_d,
+            self.env.Lambda_inv,
+            self.env.mu)
 
         C  = np.concatenate([C_tau, C_clf])
         c   = np.concatenate([c_tau, c_clf])
 
         return C,c
     
-    def get_action(self, tau_max, x_d, xdot_d, delta_q, w_d, W):
+    def get_action(self, tau_max, x_d, xdot_d, delta_q, w_d, x_ddot_d, W):
 
-        C, c = self.get_ineq_constraint(tau_max, x_d, xdot_d, delta_q, w_d)
+        C, c = self.get_ineq_constraint(tau_max, x_d, xdot_d, delta_q, w_d, x_ddot_d)
 
         H = W + np.identity(W.shape[0]) * 1e-4
+        # H = W
         g = np.zeros((self.env.model.nu,))
 
         tau = solve_qp(P=H, q=g, G=C, h=c, solver="cvxopt", verbose=False)

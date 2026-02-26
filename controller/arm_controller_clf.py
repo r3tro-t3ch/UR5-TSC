@@ -53,6 +53,8 @@ class CLFArmController:
         
         self.traj_pos, vel, acc = self.traj_handler.get_trajectory()
 
+        self.traj_vel = vel
+
         delta_q = self.get_quat_error(self.env.ee_q, self.des_ori_q)
 
         tau = self.tsc.get_action(
@@ -61,6 +63,7 @@ class CLFArmController:
             vel,
             delta_q,
             np.zeros((3,)),
+            np.concatenate([acc, np.zeros((3,))]),
             np.identity(6)
         )
 
@@ -98,7 +101,15 @@ class CLFArmController:
             'ee_ori_y'  : self.env.ee_euler[1],
             'ee_ori_z'  : self.env.ee_euler[2],
 
-            'tau'       : self.tau
+            'tau'       : self.tau,
+
+            'ee_vel_x' : self.env.ee_vel[0],
+            'ee_vel_y' : self.env.ee_vel[1],
+            'ee_vel_z' : self.env.ee_vel[2],
+
+            'ee_vel_x_ref'  : self.traj_vel[0],
+            'ee_vel_y_ref'  : self.traj_vel[1],
+            'ee_vel_z_ref'  : self.traj_vel[2],
 
         }
 

@@ -38,6 +38,14 @@ def main(args):
     ee_ori_y_ref = log_data.data['ee_ori_y_ref']
     ee_ori_z_ref = log_data.data['ee_ori_z_ref']
 
+    ee_vel_x    = log_data.data['ee_vel_x']
+    ee_vel_y    = log_data.data['ee_vel_y']
+    ee_vel_z    = log_data.data['ee_vel_z']
+
+    ee_vel_x_ref    = log_data.data['ee_vel_x_ref']
+    ee_vel_y_ref    = log_data.data['ee_vel_y_ref']
+    ee_vel_z_ref    = log_data.data['ee_vel_z_ref']
+
     tau = np.array(log_data.data['tau'])
 
     plt.figure()
@@ -49,6 +57,20 @@ def main(args):
     plt.plot(times, tau[:,5])
     # plt.legend([    ])
 
+    plt.figure()
+    plt.plot(times, ee_vel_x)
+    plt.plot(times, ee_vel_x_ref)
+    plt.legend(["x_dot", "x_dot_r"])
+
+    plt.figure()
+    plt.plot(times, ee_vel_y)
+    plt.plot(times, ee_vel_y_ref)
+    plt.legend(["y_dot", "y_dot_r"])
+
+    plt.figure()
+    plt.plot(times, ee_vel_z)
+    plt.plot(times, ee_vel_z_ref)
+    plt.legend(["z_dot", "z_dot_r"])
 
     plt.figure()
     plt.plot(times, ee_pos_x)
@@ -115,10 +137,10 @@ if __name__ == "__main__":
     args['des_ori_q']   = np.array([1, 0.0, 0.0, 0.0])
 
     # clf
-    args['alpha']           = 1
+    args['alpha']           = 2
     args['cbf']             = False
 
-    args['P']               = np.diag([100,100,100,100,100,100])
+    args['P']               = np.diag([10,10,10,10,10,10])
     args['Q']               = np.diag([10,10,10,10,10,10])
 
 
