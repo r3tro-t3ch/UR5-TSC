@@ -55,16 +55,15 @@ class CLFArmController:
 
         self.traj_vel = vel
 
-        delta_q = self.get_quat_error(self.env.ee_q, self.des_ori_q)
 
         tau = self.tsc.get_action(
-            self.tau_max,
-            self.traj_pos,
-            vel,
-            delta_q,
-            np.zeros((3,)),
-            np.concatenate([acc, np.zeros((3,))]),
-            np.identity(6)
+            tau_max=self.tau_max,
+            x_d=self.traj_pos,
+            xdot_d=vel,
+            ori_d=self.des_ori_euler,
+            w_d=np.zeros((3,)),
+            x_ddot_d=np.concatenate([acc, np.zeros((3,))]),
+            W=np.identity(6)
         )
 
         self.tau = tau

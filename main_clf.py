@@ -10,7 +10,7 @@ def main(args):
     controller = CLFArmController(env, args)
     torq = np.zeros((6,))
 
-    env.data.qpos = env.model.keyframe("home").qpos
+    # env.data.qpos = env.model.keyframe("home").qpos
     
     while env.is_alive:
         env.step(torq)
@@ -137,11 +137,13 @@ if __name__ == "__main__":
     args['des_ori_q']   = np.array([1, 0.0, 0.0, 0.0])
 
     # clf
-    args['alpha']           = 2
+    args['alpha']           = 1
     args['cbf']             = False
 
-    args['P']               = np.diag([10,10,10,10,10,10])
-    args['Q']               = np.diag([10,10,10,10,10,10])
+    # args['P']               = np.diag([100,100,100,10,10,10])
+    args['P']               = np.diag([1,1,1,1,1,1])
+    # args['Q']               = np.diag([10,10,10,10,10,10])
+    args['Q']               = np.diag([1,1,1,1,1,1])
 
 
     args['T']               = 5
