@@ -133,17 +133,16 @@ if __name__ == "__main__":
     args['cam_ele']     = -20
     args['cam_dist']    =  5
 
-    args['des_pos']     = np.array([-0.6,0.4,0.2])
+    args['des_pos']     = np.array([-0.6,0.4,0.6])
     args['des_ori_q']   = np.array([1, 0.0, 0.0, 0.0])
 
     # clf
     args['alpha']           = 1
     args['cbf']             = False
 
-    # args['P']               = np.diag([100,100,100,10,10,10])
-    args['P']               = np.diag([1,1,1,1,1,1])
-    # args['Q']               = np.diag([10,10,10,10,10,10])
-    args['Q']               = np.diag([1,1,1,1,1,1])
+    args['P']               = np.diag([1000,1000,1000,100,100,100])
+    args['Q']               = np.diag([10,10,10,10,10,10])
+    # args['Q']               = np.diag([1,1,1,1,1,1])
 
 
     args['T']               = 5

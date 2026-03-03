@@ -55,7 +55,6 @@ class CLFArmController:
 
         self.traj_vel = vel
 
-
         tau = self.tsc.get_action(
             tau_max=self.tau_max,
             x_d=self.traj_pos,

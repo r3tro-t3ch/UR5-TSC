@@ -1,7 +1,7 @@
 import numpy as np
 from env.ur5_env import UR5Env
 from qpsolvers import solve_qp
-from .clf import HOTSCLF as CLF
+from .clf import TSCLF as CLF
 
 class CLFTaskSpaceController:
 
@@ -9,15 +9,13 @@ class CLFTaskSpaceController:
         
         # mujoco parameters
         self.env        = env
-        self.clf_filter = CLF(P,1,5)
+        self.clf_filter = CLF(P, Q, 3)
 
     def get_ineq_constraint(self, tau_max, x_d, xdot_d, ori_d, w_d, x_ddot_d):
 
         # Joint torque constraint
         J = np.concatenate([self.env.jacp, self.env.jacr])
-        # C_tau = np.concatenate(
-        #     [np.identity(6), -np.identity(6)]
-        # )
+        
         C_tau = np.concatenate(
             [J.T, -J.T]
         )
@@ -37,7 +35,8 @@ class CLFTaskSpaceController:
             xdot_d=_xdot_d,
             xddot_d=x_ddot_d,
             Lambda_inv=self.env.Lambda_inv,
-            mu=self.env.mu)
+            mu=self.env.mu
+        )
 
         C  = np.concatenate([C_tau, C_clf])
         c   = np.concatenate([c_tau, c_clf])
