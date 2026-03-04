@@ -19,7 +19,7 @@ class CLFArmController:
         self.T              = args['T']
 
         self.P              = args['P']
-        self.Q              = args['Q']
+        self.D              = args['D']
 
         self.init           = True
 
@@ -32,7 +32,17 @@ class CLFArmController:
             env,
             self.alpha,
             self.P,
-            self.Q
+            self.D
+        )
+
+        self.task = TaskConsistantEETask(
+            self.env,
+            Kp_track_pos=args['position_task_kp_track'],
+            Kd_track_pos=args['position_task_kd_track'],
+            Kd_damp_pos=args['position_task_kd_damp'],
+            Kp_track_ori=args['orientation_task_kp_track'],
+            Kd_track_ori=args['orientation_task_kd_track'],
+            Kd_damp_ori=args['orientation_task_kd_damp']
         )
 
         self.traj_handler = TrajectoryGenerator(self.dt)
@@ -55,6 +65,16 @@ class CLFArmController:
 
         self.traj_vel = vel
 
+        f_d = self.task.get_cost(
+            self.traj_pos,
+            vel,
+            acc,
+            self.des_ori_q,
+            np.zeros(3),
+            np.zeros(3),
+            "track"
+        )
+
         tau = self.tsc.get_action(
             tau_max=self.tau_max,
             x_d=self.traj_pos,
@@ -62,7 +82,8 @@ class CLFArmController:
             ori_d=self.des_ori_euler,
             w_d=np.zeros((3,)),
             x_ddot_d=np.concatenate([acc, np.zeros((3,))]),
-            W=np.identity(6)
+            W=np.identity(6),
+            f_d=f_d
         )
 
         self.tau = tau

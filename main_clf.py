@@ -10,7 +10,7 @@ def main(args):
     controller = CLFArmController(env, args)
     torq = np.zeros((6,))
 
-    # env.data.qpos = env.model.keyframe("home").qpos
+    env.data.qpos = env.model.keyframe("home").qpos
     
     while env.is_alive:
         env.step(torq)
@@ -133,16 +133,23 @@ if __name__ == "__main__":
     args['cam_ele']     = -20
     args['cam_dist']    =  5
 
-    args['des_pos']     = np.array([-0.6,0.4,0.6])
-    args['des_ori_q']   = np.array([1, 0.0, 0.0, 0.0])
+    args['des_pos']     = np.array([0.6,0.4,0.5])
+    args['des_ori_q']   = np.array([1, 0.756, 0.0, 0.0])
 
     # clf
-    args['alpha']           = 1
+    args['alpha']           = 5
     args['cbf']             = False
 
-    args['P']               = np.diag([1000,1000,1000,100,100,100])
-    args['Q']               = np.diag([10,10,10,10,10,10])
-    # args['Q']               = np.diag([1,1,1,1,1,1])
+    args['P']               = np.diag([100,100,100,100,100,100])
+    args['D']               = np.diag([10,10,10,10,10,10])
+
+    args['position_task_kp_track']  = 400
+    args['position_task_kd_track']  = 20
+    args['position_task_kd_damp']   = 20
+
+    args['orientation_task_kp_track']   = 400
+    args['orientation_task_kd_track']   = 20
+    args['orientation_task_kd_damp']    = 20
 
 
     args['T']               = 5
