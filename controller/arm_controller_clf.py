@@ -79,7 +79,7 @@ class CLFArmController:
             tau_max=self.tau_max,
             x_d=self.traj_pos,
             xdot_d=vel,
-            ori_d=self.des_ori_euler,
+            delta_q=self.get_quat_error(self.env.ee_q, self.des_ori_q),
             w_d=np.zeros((3,)),
             x_ddot_d=np.concatenate([acc, np.zeros((3,))]),
             W=np.identity(6),
