@@ -4,6 +4,7 @@ import numpy as np
 import os
 from utils.utils import quat2euler
 from scipy.linalg import null_space
+from .ur5_pinocchio_env import UR5EnvPinocchio
 
 class UR5Env:
 
@@ -30,6 +31,8 @@ class UR5Env:
         self.cam_dist       = args['cam_dist']
         self._mj_init()             # initialize mujoco data structures
         self.is_alive       = True
+
+        self.pinocchio_env  = UR5EnvPinocchio(args)
 
         # add obstacles
         self.cbf            = args['cbf']
@@ -91,9 +94,17 @@ class UR5Env:
         self.check_if_alive()
 
     def update_robot_states(self):
+
+        # Update pinocchio
+        self.pinocchio_env.set_state(self.data.qpos, self.data.qvel)
         
         # update jacobians
         mj.mj_jacSite(self.model, self.data, self.jacp, self.jacr, self.BodyIndex.EE_SITE)
+
+        # J = self.pinocchio_env.J(self.data.qpos)
+
+        # self.jacp = J[:3]
+        # self.jacr = J[3:]
 
         # update EOM
         mj.mj_fullM(self.model, self.M, self.data.qM)
