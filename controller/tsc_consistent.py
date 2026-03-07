@@ -55,7 +55,7 @@ class ConsistentTaskSpaceController:
         H = np.identity(6)
         g = -tau.T
 
-        tau_safe = solve_qp(P=H, q=g, G=C, h=c, solver="cvxopt", verbose=True)
+        tau_safe = solve_qp(P=H, q=g, G=C, h=c, solver="cvxopt", verbose=False)
 
         return tau_safe
 

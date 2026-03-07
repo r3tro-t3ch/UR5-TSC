@@ -55,12 +55,7 @@ class UR5Env:
 
         # position and orientation jacobian
         self.jacp       = np.zeros((3, self.model.nv))
-        self.jacp_prev  = np.zeros((3, self.model.nv))
-        self.jacp_dot   = np.zeros((3, self.model.nv))
-        
         self.jacr       = np.zeros((3, self.model.nv))
-        self.jacr_prev  = np.zeros((3, self.model.nv))
-        self.jacr_dot   = np.zeros((3, self.model.nv))
 
         # mass matrix, coriolis and gravity vector
         self.M      = np.zeros((self.model.nv,self.model.nv))
@@ -99,41 +94,38 @@ class UR5Env:
         self.pinocchio_env.set_state(self.data.qpos, self.data.qvel)
         
         # update jacobians
-        mj.mj_jacSite(self.model, self.data, self.jacp, self.jacr, self.BodyIndex.EE_SITE)
+        # mj.mj_jacSite(self.model, self.data, self.jacp, self.jacr, self.BodyIndex.EE_SITE)
 
-        # J = self.pinocchio_env.J(self.data.qpos)
+        J = self.pinocchio_env.J(self.data.qpos)
 
-        # self.jacp = J[:3]
-        # self.jacr = J[3:]
+        self.jacp = J[:3]
+        self.jacr = J[3:]
 
         # update EOM
-        mj.mj_fullM(self.model, self.M, self.data.qM)
-        self.C = self.data.qfrc_bias
+        # mj.mj_fullM(self.model, self.M, self.data.qM)
+        # self.C = self.data.qfrc_bias
 
         # update task space dynamics
-        J = np.concatenate([self.jacp, self.jacr])
-        self.M_inv = np.linalg.inv(self.M)
+        # J = np.concatenate([self.jacp, self.jacr])
+        # self.M_inv = np.linalg.inv(self.M)
+        self.M_inv = np.linalg.inv(self.pinocchio_env.M(self.data.qpos))
 
         self.Lambda_inv = J @ self.M_inv @ J.T
 
         self.Lambda_inv += 1e-3 * np.eye(6)
 
         self.Lambda  = np.linalg.inv(self.Lambda_inv)
-        self.mu     = self.Lambda @ J @ self.M_inv @ self.C
-
-        # update jacobians
-        self.jacp_dot   = (self.jacp - self.jacp_prev)/self.model.opt.timestep
-        self.jacr_dot   = (self.jacr - self.jacr_prev)/self.model.opt.timestep
-
-        self.jacp_prev  = np.copy(self.jacp)
-        self.jacr_prev  = np.copy(self.jacr)
+        # self.mu     = self.Lambda @ J @ self.M_inv @ self.C
+        self.mu     = self.Lambda @ J @ self.M_inv @ self.pinocchio_env.C(self.data.qpos, self.data.qvel)
 
         # update pos and vel
-        self.ee_pos     = self.data.site_xpos[self.BodyIndex.EE_SITE]
-        self.ee_vel     = self.jacp @ self.data.qvel
+        # self.ee_pos     = self.data.site_xpos[self.BodyIndex.EE_SITE]
+        # self.ee_q       = self.data.xquat[self.BodyIndex.WRIST_3_LINK]
+        self.ee_pos, self.ee_q  = self.pinocchio_env.get_ee_pose(mujoco=True)
 
-        self.ee_q       = self.data.xquat[self.BodyIndex.WRIST_3_LINK]
         self.ee_euler   = quat2euler(self.ee_q)
+
+        self.ee_vel     = self.jacp @ self.data.qvel
         self.ee_w       = self.jacr @ self.data.qvel
 
 

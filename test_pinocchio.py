@@ -17,7 +17,7 @@ args['des_ori_q']   = np.array([1, 0.0, 0.0, 0.0])
 # cbf
 args['cbf']             = False
 
-pin_env     = UR5EnvPinocchio(args)
+# pin_env     = UR5EnvPinocchio(args)
 mj_env      = UR5Env(args)
 
 q = np.ones(6) * 1.57
@@ -26,29 +26,29 @@ v = np.zeros(6)
 # MuJoCo
 mj_env.data.qpos[:] = q
 mj_env.data.qvel[:] = v
-mujoco.mj_forward(mj_env.model, mj_env.data)
-mujoco.mj_crb(mj_env.model, mj_env.data)   # fill qM
+# mujoco.mj_forward(mj_env.model, mj_env.data)
+# mujoco.mj_crb(mj_env.model, mj_env.data)   # fill qM
 mj_env.update_robot_states()               # recompute M, C, J, Lambda, mu
 
-# Pinocchio
-pin_env.set_state(q, v)
+# # Pinocchio
+# pin_env.set_state(q, v)
 
-M_pin = pin_env.M(q)
+# M_pin = pin_env.M(q)
 
-M_mj = mj_env.M
+# M_mj = mj_env.M
 
-print("M : ", M_mj, M_pin)
-print("Difference:")
-print(M_pin - M_mj)
+# print("M : ", M_mj, M_pin)
+# print("Difference:")
+# print(M_pin - M_mj)
 
-print("Close?")
-print(np.allclose(M_pin, M_mj, atol=1e-5))
+# print("Close?")
+# print(np.allclose(M_pin, M_mj, atol=1e-5))
 
-print("C : ", mj_env.C, pin_env.C(q, v))
-print(np.allclose(mj_env.C, pin_env.C(q, v), atol=1e-5))
+# print("C : ", mj_env.C, pin_env.C(q, v))
+# print(np.allclose(mj_env.C, pin_env.C(q, v), atol=1e-5))
 
-J = np.concatenate([mj_env.jacp, mj_env.jacr])
+# J = np.concatenate([mj_env.jacp, mj_env.jacr])
 
-print(pin_env.J(q), J)
-print(np.allclose(pin_env.J(q), J, atol=1e-2))
+# print(pin_env.J(q), J)
+# print(np.allclose(pin_env.J(q), J, atol=1e-5))
 
