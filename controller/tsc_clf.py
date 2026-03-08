@@ -45,8 +45,8 @@ class CLFTaskSpaceController:
         C  = np.concatenate([C_tau, C_clf])
         c   = np.concatenate([c_tau, c_clf])
 
-        # C = C_clf
-        # c = c_clf
+        # C = C_tau
+        # c = c_tau
 
         return C,c
     
