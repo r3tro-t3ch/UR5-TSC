@@ -151,6 +151,8 @@ if __name__ == "__main__":
     args['orientation_task_kd_track']   = 20
     args['orientation_task_kd_damp']    = 20
 
+    args['use_pinnochio_dynamics']      = True
+
 
     args['T']               = 5
     args['tau_max']         = 150

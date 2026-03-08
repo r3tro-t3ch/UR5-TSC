@@ -123,6 +123,8 @@ if __name__ == "__main__":
     args['orientation_task_kd_track']   = 60
     args['orientation_task_kd_damp']    = 20
 
+    args['use_pinnochio_dynamics']      = True
+
     # args['controller_type']             = 'inconsistent'
     args['controller_type']             = 'consistent'
 

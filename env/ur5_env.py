@@ -32,7 +32,11 @@ class UR5Env:
         self._mj_init()             # initialize mujoco data structures
         self.is_alive       = True
 
-        self.pinocchio_env  = UR5EnvPinocchio(args)
+        # dynamics computation
+        self.use_pin_dyn    = args['use_pinnochio_dynamics']
+
+        if self.use_pin_dyn:
+            self.pinocchio_env  = UR5EnvPinocchio(args)
 
         # add obstacles
         self.cbf            = args['cbf']
@@ -90,38 +94,44 @@ class UR5Env:
 
     def update_robot_states(self):
 
-        # Update pinocchio
-        self.pinocchio_env.set_state(self.data.qpos, self.data.qvel)
+        if self.use_pin_dyn:
+            # Update pinocchio
+            self.pinocchio_env.set_state(self.data.qpos, self.data.qvel)
         
         # update jacobians
-        # mj.mj_jacSite(self.model, self.data, self.jacp, self.jacr, self.BodyIndex.EE_SITE)
+        if self.use_pin_dyn:
+            J = self.pinocchio_env.J(self.data.qpos)
+            self.jacp = J[:3]
+            self.jacr = J[3:]
 
-        J = self.pinocchio_env.J(self.data.qpos)
+        else:
+            mj.mj_jacSite(self.model, self.data, self.jacp, self.jacr, self.BodyIndex.EE_SITE)
+            J = np.concatenate([self.jacp, self.jacr])
 
-        self.jacp = J[:3]
-        self.jacr = J[3:]
 
         # update EOM
-        # mj.mj_fullM(self.model, self.M, self.data.qM)
-        # self.C = self.data.qfrc_bias
+        if self.use_pin_dyn:
+            self.M = self.pinocchio_env.M(self.data.qpos)
+            self.C = self.pinocchio_env.C(self.data.qpos, self.data.qvel)
+        else:
+            mj.mj_fullM(self.model, self.M, self.data.qM)
+            self.C = self.data.qfrc_bias
 
         # update task space dynamics
-        # J = np.concatenate([self.jacp, self.jacr])
-        # self.M_inv = np.linalg.inv(self.M)
-        self.M_inv = np.linalg.inv(self.pinocchio_env.M(self.data.qpos))
-
+        self.M_inv = np.linalg.inv(self.M)
         self.Lambda_inv = J @ self.M_inv @ J.T
-
         self.Lambda_inv += 1e-3 * np.eye(6)
 
         self.Lambda  = np.linalg.inv(self.Lambda_inv)
-        # self.mu     = self.Lambda @ J @ self.M_inv @ self.C
-        self.mu     = self.Lambda @ J @ self.M_inv @ self.pinocchio_env.C(self.data.qpos, self.data.qvel)
+        self.mu     = self.Lambda @ J @ self.M_inv @ self.C
 
         # update pos and vel
-        # self.ee_pos     = self.data.site_xpos[self.BodyIndex.EE_SITE]
-        # self.ee_q       = self.data.xquat[self.BodyIndex.WRIST_3_LINK]
-        self.ee_pos, self.ee_q  = self.pinocchio_env.get_ee_pose(mujoco=True)
+        if self.use_pin_dyn:
+            self.ee_pos, self.ee_q  = self.pinocchio_env.get_ee_pose(mujoco=True)
+        else:
+            self.ee_pos     = self.data.site_xpos[self.BodyIndex.EE_SITE]
+            self.ee_q       = self.data.xquat[self.BodyIndex.WRIST_3_LINK]
+
 
         self.ee_euler   = quat2euler(self.ee_q)
 
@@ -130,7 +140,7 @@ class UR5Env:
 
 
     def apply_external_force(self, body, force):
-        # apply externam force on any given body
+        # apply external force on any given body
         self.data.xfrc_applied[body,:3] = force
 
     def check_if_alive(self):

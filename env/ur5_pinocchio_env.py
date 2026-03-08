@@ -6,7 +6,8 @@ import os
 
 class UR5EnvPinocchio:
 
-    EE_SITE = "attachment_site"
+    EE_SITE         = "attachment_site"
+    WRIST_3_LINK    = "wrist_3_link"
 
     def __init__(self, args):
         
@@ -28,7 +29,9 @@ class UR5EnvPinocchio:
         # init states and numerical values
         self.q          = pin.neutral(self.model)
         self.q_dot      = np.zeros(self.model.nv)
-        self.ee_site_frame_id   = self.model.getFrameId(self.EE_SITE)
+
+        self.ee_site_frame_id       = self.model.getFrameId(self.EE_SITE)
+        self.wrist_3_link_frame_id  = self.model.getFrameId(self.WRIST_3_LINK)
 
         self.set_state(self.q, self.q_dot)
 
@@ -70,9 +73,10 @@ class UR5EnvPinocchio:
     def get_ee_pose(self, mujoco=True):
 
         T = self.data.oMf[self.ee_site_frame_id]  # SE3 transform
+        R = self.data.oMf[self.wrist_3_link_frame_id]
     
         pos  = T.translation                       # (3,)  xyz
-        quat = pin.SE3ToXYZQUAT(T)[3:]             # (4,)  xyzw
+        quat = pin.SE3ToXYZQUAT(R)[3:]             # (4,)  xyzw
         if mujoco:
             quat = np.roll(quat, 1)
             # w is negated 
