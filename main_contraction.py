@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
+from controller.contraction import Contraction
+
 def main(args):
     from env.ur5_env import UR5Env
     from controller.arm_controller import ArmController
@@ -10,11 +12,17 @@ def main(args):
     controller = ArmController(env, args)
     torq = np.zeros((6,))
 
+    contraction = Contraction(env.pinocchio_env)
+
     env.data.qpos = env.model.keyframe("home").qpos
     
     while env.is_alive:
         env.step(torq)
         torq = controller.get_action()
+        C, e, contracting = contraction.contraction_condition(env.data.qpos, env.data.qvel, torq, 1)
+
+        print(C, e, contracting)
+        
         controller._log_data()
     env.stop()
 

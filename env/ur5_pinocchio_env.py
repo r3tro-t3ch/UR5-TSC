@@ -30,6 +30,7 @@ class UR5EnvPinocchio:
         self.q          = pin.neutral(self.model)
         self.q_dot      = np.zeros(self.model.nv)
 
+        # frames for position and orientation of end effector
         self.ee_site_frame_id       = self.model.getFrameId(self.EE_SITE)
         self.wrist_3_link_frame_id  = self.model.getFrameId(self.WRIST_3_LINK)
 
@@ -43,9 +44,22 @@ class UR5EnvPinocchio:
         M = np.tril(M.T) + np.triu(M, 1)
         return M
     
+    def Minv(self, q : np.ndarray):
+        # Mass matrix
+        pin.crba(self.model, self.data, q)
+        M = np.array(self.data.M.copy())
+        M = np.tril(M.T) + np.triu(M, 1)
+        return np.linalg.inv(M)
+    
     def dMdq(self, q):
         # computes \frac{\del M}{\del q}
-        return np.array(self._dMdq_fn_c(q))
+        nq = self.model.nq
+        return np.array(self._dMdq_fn_c(q)).reshape((nq, nq, nq))
+    
+    def dMinvdq(self, q):
+        # computes \frac{\del M_inv}{\del q}
+        nq = self.model.nq
+        return np.array(self._dMinvdq_fn_c(q)).reshape((nq, nq, nq))
     
     # Coriolis, Centrifugal and gravity term and their derivatives
     def C(self, q : np.ndarray, qdot : np.ndarray):
@@ -100,8 +114,11 @@ class UR5EnvPinocchio:
         cpin.crba(self.cmodel, self.cdata, q)
         M_sx    = self.cdata.M
 
-        M_sx    = (M_sx.T + M_sx)/2
-        dMdq_sx = ca.jacobian(M_sx, q)
+        M_sx        = (M_sx.T + M_sx)/2
+        M_sx_inv    = ca.inv(M_sx)
+
+        dMdq_sx     = ca.jacobian(M_sx, q)
+        dMinvdq_sx  = ca.jacobian(M_sx_inv, q)
 
         # C
         cpin.rnea(self.cmodel, self.cdata, q, q_dot, ca.SX.zeros(nv))
@@ -112,6 +129,7 @@ class UR5EnvPinocchio:
 
         # setup functions
         self._dMdq_fn_c     = ca.Function("dMdq",   [q],            [dMdq_sx])
+        self._dMinvdq_fn_c  = ca.Function("dMinvdq",[q],            [dMinvdq_sx])
         self._dCdq_fn_c     = ca.Function("dCdq",   [q, q_dot],     [dCdq])
         self._dCdqdot_fn_c  = ca.Function("dCdqdot",[q, q_dot],     [dCdqdot])
 
