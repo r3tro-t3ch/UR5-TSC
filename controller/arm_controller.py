@@ -89,7 +89,8 @@ class ArmController:
             self.init = False
         
         self.traj_pos, vel, acc = self.traj_handler.get_trajectory()
-
+        
+        self.traj_vel = vel
 
 
         if self.type == 'consistent':

@@ -61,6 +61,16 @@ class UR5EnvPinocchio:
         nq = self.model.nq
         return np.array(self._dMinvdq_fn_c(q)).reshape((nq, nq, nq))
     
+    # Task space inertia
+    def Lambda(self, q : np.ndarray):
+        J       = self.J(q)
+        M_inv   = self.Minv(q)
+
+        Lambda_inv  = J @ M_inv @ J.T
+        Lambda      = np.linalg.inv(Lambda_inv + np.identity(Lambda_inv.shape[0]) * 1e-5)
+
+        return Lambda
+
     # Coriolis, Centrifugal and gravity term and their derivatives
     def C(self, q : np.ndarray, qdot : np.ndarray):
         # Coriolis, Centrifugal and gravity term
@@ -83,6 +93,17 @@ class UR5EnvPinocchio:
             pin.ReferenceFrame.LOCAL_WORLD_ALIGNED
         )
         return np.array(J)
+    
+    def Jdot(self, q : np.ndarray, qdot : np.ndarray):
+        # copmute J dot
+        pin.computeJointJacobiansTimeVariation(self.model, self.data, q, qdot)
+        Jdot = pin.getFrameJacobianTimeVariation(
+            self.model,
+            self.data,
+            self.ee_site_frame_id,
+            pin.ReferenceFrame.LOCAL_WORLD_ALIGNED
+        )
+        return np.array(Jdot)
 
     def get_ee_pose(self, mujoco=True):
 

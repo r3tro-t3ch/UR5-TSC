@@ -60,17 +60,17 @@ class Contraction:
         return dgudx
     
     def A(self, q : np.ndarray, q_dot : np.ndarray, tau : np.ndarray):
+        # this is the closed loop form of the dynamics
         return self.dfdx(q, q_dot) + self.dgudx(q, tau)
 
-    def W(self, q):
-        return self.pin_env.Minv(q)
+    def M(self, q):
+        return self.pin_env.Lambda(q)
     
     def W_dot(self, q, q_dot):
 
         Minv    = self.pin_env.Minv(q)
 
         dMinvdq = self.pin_env.dMinvdq(q)
-        print(dMinvdq.shape)
 
         # M(q)
         # Mdot = dMdq @ qdot
@@ -84,7 +84,7 @@ class Contraction:
     
     def contraction_condition(self, q, q_dot, tau, _lambda):
 
-        W       = np.kron(np.identity(2), self.W(q))
+        W       = np.kron(np.identity(2), self.M(q))
         W_dot   = np.kron(np.identity(2), self.W_dot(q, q_dot))
         A       = self.A(q, q_dot, tau)
 
