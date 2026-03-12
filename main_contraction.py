@@ -30,12 +30,12 @@ def main(args):
     env.data.qvel = env.model.keyframe("home").ctrl
 
     upper_bound = []
+    upper_bound_exp = []
     error_distance = []
     
     while env.is_alive:
         env.step(torq)
         torq = controller.get_action()
-
 
         pos, quat = env.ee_pos, env.ee_q
 
@@ -46,14 +46,16 @@ def main(args):
         x_dot_d =  np.concatenate([np.copy(controller.traj_vel), w_d])
         x_dot = np.concatenate([np.copy(env.ee_vel), np.copy(env.ee_w)])
 
-        z = np.concatenate([x - x_d, x_dot - x_dot_d])
+        z_norm, exp = contraction.get_upper_bound(
+            env.data.time,
+            x,
+            x_d,
+            x_dot,
+            x_dot_d
+        )
 
-        z_norm = np.linalg.norm(z)
-
-        A, eig = contraction.error_dynamics()
-
-        upper_bound.append(np.exp(eig * env.data.time))
         error_distance.append(z_norm)
+        upper_bound_exp.append(exp)
 
         controller._log_data()
     env.stop()
@@ -78,7 +80,7 @@ def main(args):
     ee_ori_z_ref = log_data.data['ee_ori_z_ref']
 
     upper_bound = np.array(upper_bound)
-
+    upper_bound_exp = np.array(upper_bound_exp)
     error_distance = np.array(error_distance)
     window = 10
     mean_error = np.convolve(error_distance, np.ones(window)/window, mode='valid')
@@ -86,20 +88,12 @@ def main(args):
 
     # use true max error as arm reorients
     z_o = np.max(error_distance)
-    # z_o = error_distance[0]
 
     z_ss   = np.mean(error_distance[-100:]) + 3* np.std(error_distance[-100:])
     
-
-
     peak_idx = np.argmax(error_distance)
     t_peak = times[peak_idx]
-    # z_o = error_distance[peak_idx]
-
-    # # upper_bound = z_o * upper_bound + z_ss
-    # upper_bound = z_o * np.exp(eig * (times - t_peak)) + z_ss
-    # upper_bound[:peak_idx] = np.nan  # bound undefined during reconfiguration
-
+   
     # fit decay rate from peak to steady state
     t_fit = times[peak_idx:]
     z_fit = error_distance[peak_idx:]
@@ -111,8 +105,11 @@ def main(args):
 
     upper_bound = z_o * np.exp(eig_empirical * (times - t_peak)) + z_ss
 
+    upper_bound_exp = z_o * upper_bound_exp + z_ss
+
     plt.figure()
-    plt.plot(times, upper_bound, "--", label="contraction upper bound")
+    plt.plot(times, upper_bound, "--", label="contraction upper bound fitted")
+    plt.plot(times, upper_bound_exp, "k--", label="contraction upper bound actual")
     plt.plot(times, error_distance, alpha=0.3, label="error")
     plt.plot(t_mean, mean_error, label="error dynamics evolution")
     plt.legend()
