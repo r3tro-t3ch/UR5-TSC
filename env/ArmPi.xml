@@ -9,9 +9,16 @@
     <geom type="box" rgba="0.7 0.7 0.7 1" contype="1" conaffinity="1"/>
   </default>
 
+  <asset>
+   <texture name="grid" type="2d" builtin="checker" width="512" height="512" rgb1=".1 .2 .3" rgb2=".2 .3 .4"/>
+    <material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance=".2"/>
+  </asset>
+
   <worldbody>
 
     <!-- Base (fixed to world) -->
+     <geom name="floor" size="0 0 .05" type="plane" material="grid" condim="3"/>
+    <light name="spotlight" mode="targetbodycom" target="wrist_3_link" pos="0 -1 2"/>
     <body name="base_link" pos="0 0 0">
       <geom name="base_geom" size="0.04 0.04 0.01" pos="0 0 0.01"/>
       <!-- base_motor: revolute around Z -->
@@ -36,7 +43,7 @@
             <joint name="link3_motor" type="hinge" axis="1 0 0" pos="0 0 0"
                    range="-2.0944 2.0944" actuatorfrcrange="-10 10"/>
 
-            <body name="link4" pos="0 0 0.05">
+            <body name="wrist_3_link" pos="0 0 0.05">
               <geom name="link4_geom1" size="0.01 0.01 0.0025" pos="0 0 0.0025"/>
               <geom name="link4_geom2" size="0.03 0.025 0.015" pos="0 0 0.02"/>
               <!-- link4_motor: revolute around Z (wrist rotation) -->
@@ -45,17 +52,15 @@
 
               <!-- Left claw -->
               <body name="left_claw" pos="-0.015 0 0.035">
-                <geom name="left_claw_geom" size="0.015 0.0225 0.035" pos="-0.015 0 0.035"/>
-                <joint name="gripper_left_motor" type="hinge" axis="0 -1 0" pos="0 0 0"
-                       range="-0.216 0.216" actuatorfrcrange="-3 3"/>
+                <geom name="left_claw_geom" size="0.005 0.005 0.035" pos="-0.015 0 0.035"/>
               </body>
 
               <!-- Right claw -->
               <body name="right_claw" pos="0.015 0 0.035">
-                <geom name="right_claw_geom" size="0.015 0.0225 0.035" pos="0.015 0 0.035"/>
-                <joint name="gripper_right_motor" type="hinge" axis="0 1 0" pos="0 0 0"
-                       range="-0.216 0.216" actuatorfrcrange="-3 3"/>
+                <geom name="right_claw_geom" size="0.005 0.005 0.035" pos="0.015 0 0.035"/>
               </body>
+
+              <site name="attachment_site" pos="0 0 0.035" quat="1 0 0 0"/>
 
             </body>
           </body>
@@ -71,8 +76,11 @@
     <motor name="link2_motor_act"        joint="link2_motor"        gear="1" ctrllimited="true" ctrlrange="-10 10"/>
     <motor name="link3_motor_act"        joint="link3_motor"        gear="1" ctrllimited="true" ctrlrange="-10 10"/>
     <motor name="link4_motor_act"        joint="link4_motor"        gear="1" ctrllimited="true" ctrlrange="-5 5"/>
-    <motor name="gripper_left_motor_act" joint="gripper_left_motor" gear="1" ctrllimited="true" ctrlrange="-3 3"/>
-    <motor name="gripper_right_motor_act"joint="gripper_right_motor"gear="1" ctrllimited="true" ctrlrange="-3 3"/>
   </actuator>
+
+
+  <keyframe>
+    <key name="home" qpos="-1.5708 -1.5708 1.5708 -1.5708 -1.5708" ctrl="-1.5708 -1.5708 1.5708 -1.5708 -1.5708"/>
+  </keyframe>
 
 </mujoco>

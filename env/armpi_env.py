@@ -3,20 +3,16 @@ import mujoco_viewer
 import numpy as np
 import os
 from utils.utils import quat2euler
-from scipy.linalg import null_space
-from .ur5_pinocchio_env import UR5EnvPinocchio
 
-class UR5Env:
+class ArmPiEnv:
 
     class BodyIndex():
 
-        BASE            = 1
-        SHOULDER_LINK   = 2
-        UPPER_ARM_LINK  = 3
-        FOREARM_LINK    = 4
-        WRIST_1_LINK    = 5
-        WRIST_2_LINK    = 6
-        WRIST_3_LINK    = 7
+        BASE_LINK       = 1
+        LINK1           = 2
+        LINK2           = 3
+        LINK3           = 4
+        WRIST_3_LINK    = 5
 
         EE_SITE         = 0
 
@@ -31,20 +27,6 @@ class UR5Env:
         self.cam_dist       = args['cam_dist']
         self._mj_init()             # initialize mujoco data structures
         self.is_alive       = True
-
-        # dynamics computation
-        self.use_pin_dyn    = args['use_pinnochio_dynamics']
-
-        if self.use_pin_dyn:
-            self.pinocchio_env  = UR5EnvPinocchio(args)
-
-        # add obstacles
-        self.cbf            = args['cbf']
-
-        if self.cbf:
-            self.obstacle   = args['obstacle_pos']
-            self.obstacle_r = args['obstacle_r']
-            self.alpha      = args['alpha']
 
         # robot dynamics
 
@@ -94,28 +76,13 @@ class UR5Env:
 
     def update_robot_states(self):
 
-        if self.use_pin_dyn:
-            # Update pinocchio
-            self.pinocchio_env.set_state(self.data.qpos, self.data.qvel)
-        
-        # update jacobians
-        if self.use_pin_dyn:
-            J = self.pinocchio_env.J(self.data.qpos)
-            self.jacp = J[:3]
-            self.jacr = J[3:]
-
-        else:
-            mj.mj_jacSite(self.model, self.data, self.jacp, self.jacr, self.BodyIndex.EE_SITE)
-            J = np.concatenate([self.jacp, self.jacr])
+        mj.mj_jacSite(self.model, self.data, self.jacp, self.jacr, self.BodyIndex.EE_SITE)
+        J = np.concatenate([self.jacp, self.jacr])
 
 
         # update EOM
-        if self.use_pin_dyn:
-            self.M = self.pinocchio_env.M(self.data.qpos)
-            self.C = self.pinocchio_env.C(self.data.qpos, self.data.qvel)
-        else:
-            mj.mj_fullM(self.model, self.M, self.data.qM)
-            self.C = self.data.qfrc_bias
+        mj.mj_fullM(self.model, self.M, self.data.qM)
+        self.C = self.data.qfrc_bias
 
         # update task space dynamics
         self.M_inv = np.linalg.inv(self.M)
@@ -126,12 +93,8 @@ class UR5Env:
         self.mu     = self.Lambda @ J @ self.M_inv @ self.C
 
         # update pos and vel
-        if self.use_pin_dyn:
-            self.ee_pos, self.ee_q  = self.pinocchio_env.get_ee_pose(mujoco=True)
-        else:
-            self.ee_pos     = self.data.site_xpos[self.BodyIndex.EE_SITE]
-            self.ee_q       = self.data.xquat[self.BodyIndex.WRIST_3_LINK]
-
+        self.ee_pos     = self.data.site_xpos[self.BodyIndex.EE_SITE]
+        self.ee_q       = self.data.xquat[self.BodyIndex.WRIST_3_LINK]
 
         self.ee_euler   = quat2euler(self.ee_q)
 
@@ -157,17 +120,7 @@ class UR5Env:
 
 
     def render(self):
-        self.add_obstacle()
         self.viewer.render()
-
-    def add_obstacle(self,):
-        if self.cbf:
-            self.viewer.add_marker(
-            pos=self.obstacle, 
-            size=np.ones((3,)) * 0.05, 
-            rgba=[1, 1, 1, 1], 
-            type=mj.mjtGeom.mjGEOM_SPHERE, 
-            label="obstacle")
             
     def stop(self):
         if self.viewer.is_alive:

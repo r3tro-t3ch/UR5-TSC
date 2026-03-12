@@ -2,8 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from utils.utils import *
-
-from controller._contraction import Contraction
+from controller.contraction import Contraction
 
 def get_quat_error(q, q_d):
     a = np.array(q_d[1:4])
@@ -13,12 +12,12 @@ def get_quat_error(q, q_d):
     return e
 
 def main(args):
-    from env.ur5_env import UR5Env
+    from env.armpi_env import ArmPiEnv
     from controller.arm_controller import ArmController
     
-    env = UR5Env(args)
+    env = ArmPiEnv(args)
     controller = ArmController(env, args)
-    torq = np.zeros((6,))
+    torq = np.zeros((5,))
 
     contraction = Contraction(
         args['position_task_kp_track'],
@@ -30,13 +29,6 @@ def main(args):
     env.data.qpos = env.model.keyframe("home").qpos
     env.data.qvel = env.model.keyframe("home").ctrl
 
-    env.pinocchio_env.set_state(
-        env.data.qpos,
-        env.data.qvel
-    )
-
-    init = True
-
     upper_bound = []
     error_distance = []
     
@@ -44,11 +36,9 @@ def main(args):
         env.step(torq)
         torq = controller.get_action()
 
-        # if  env.data.time / env.model.opt.timestep >= 10:
-        pos, quat = env.pinocchio_env.get_ee_pose()
 
-        # delta_q=get_quat_error(np.copy(quat), controller.)
-        # delta_q=np.zeros((3,))
+        pos, quat = env.ee_pos, env.ee_q
+
         w_d=np.zeros((3,))
         x_d = np.concatenate([np.copy(controller.traj_pos), np.copy(controller.des_ori_euler)])
         x = np.concatenate([np.copy(pos), quat2euler(quat)])
@@ -58,7 +48,6 @@ def main(args):
 
         z = np.concatenate([x - x_d, x_dot - x_dot_d])
 
-        # z_norm = np.sqrt(z.T @ z)
         z_norm = np.linalg.norm(z)
 
         A, eig = contraction.error_dynamics()
@@ -122,7 +111,6 @@ def main(args):
 
     upper_bound = z_o * np.exp(eig_empirical * (times - t_peak)) + z_ss
 
-
     plt.figure()
     plt.plot(times, upper_bound, "--", label="contraction upper bound")
     plt.plot(times, error_distance, alpha=0.3, label="error")
@@ -132,22 +120,16 @@ def main(args):
     plt.figure()
     plt.plot(times, ee_pos_x)
     plt.plot(times, ee_pos_x_ref)
-    if env.cbf:
-        plt.scatter(times, np.ones(len(times)) * env.obstacle[0])
     plt.legend(['ee_pos_x', 'ee_pos_x_ref'])
 
     plt.figure()
     plt.plot(times, ee_pos_y)
     plt.plot(times, ee_pos_y_ref)
-    if env.cbf:
-        plt.scatter(times, np.ones(len(times)) * env.obstacle[1])
     plt.legend(['ee_pos_y', 'ee_pos_y_ref'])
 
     plt.figure()
     plt.plot(times, ee_pos_z)
     plt.plot(times, ee_pos_z_ref)
-    if env.cbf:
-        plt.scatter(times, np.ones(len(times)) * env.obstacle[2])
     plt.legend(['ee_pos_z', 'ee_pos_z_ref'])
 
     plt.figure()
@@ -167,8 +149,6 @@ def main(args):
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')  # 111 = 1x1 grid, first subplot
-    if env.cbf:
-        ax.scatter(*env.obstacle[:3], label="obstacle")
     ax.plot(ee_pos_x, ee_pos_y, ee_pos_z, label='ee position', color='b')
     ax.plot(ee_pos_x_ref, ee_pos_y_ref, ee_pos_z_ref, label='ee position ref', color='pink')
     ax.set_xlabel('X axis')
@@ -185,37 +165,29 @@ if __name__ == "__main__":
 
     args = {}
     args['is_render']   = True
-    args['xml_file']    = 'ur5e.xml'
+    args['xml_file']    = 'ArmPi.xml'
     args['cam_azi']     = 90
     args['cam_ele']     = -20
     args['cam_dist']    =  5
 
-    args['des_pos']     = np.array([0.6,0.6,0.6])
-    args['des_ori_q']   = np.array([0.7071, -0.7071, 0.0, 0.0])
-    # args['des_ori_q']   = np.array([1, 0.0, 0.0, 0.0])
+    args['des_pos']     = np.array([0.15, -0.06,0.2])
+    args['des_ori_q']   = np.array([1, 0.0, 0.0, 0.0])
 
-    # cbf
-    args['cbf']             = False
-    args['obstacle_pos']    = np.array([0.55, 0.35, 0.75])
-    args['obstacle_r']      = 0.1
-    args['alpha']           = np.array([50,100])
 
     args['position_task_mode']      = 'track'
     args['orientation_task_mode']   = 'track'
 
     args['T'] = 5
 
-    args['position_task_weight']    = 1
     args['position_task_kp_track']  = 400
     args['position_task_kd_track']  = 40
     args['position_task_kd_damp']   = 20
 
-    args['orientation_task_weight']     = 2
     args['orientation_task_kp_track']   = 400
     args['orientation_task_kd_track']   = 40
     args['orientation_task_kd_damp']    = 20
 
-    args['use_pinnochio_dynamics']      = True
+    args['use_pinnochio_dynamics']      = False
 
     # args['controller_type']             = 'inconsistent'
     args['controller_type']             = 'consistent'
