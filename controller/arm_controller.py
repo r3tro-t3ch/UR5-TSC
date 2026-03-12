@@ -73,22 +73,32 @@ class ArmController:
 
         self.traj_handler = TrajectoryGenerator(self.dt)
         
-
-        self.logger = Logger()
-
-    def get_action(self):
-
-        if self.init:
-            self.traj_handler.reset_trajectory(
-                self.env.ee_pos,
+                
+        self.traj_handler.reset_trajectory(
+                np.array([0.6, -0.4, 1]),
                 self.des_pos,
                 np.zeros(3),
                 np.zeros(3),
                 self.T
             )
-            self.init = False
+
+
+        self.logger = Logger()
+
+    def get_action(self):
+
+        # if self.init:
+        #     self.traj_handler.reset_trajectory(
+        #         self.env.ee_pos,
+        #         self.des_pos,
+        #         np.zeros(3),
+        #         np.zeros(3),
+        #         self.T
+        #     )
+        #     self.init = False
         
         self.traj_pos, vel, acc = self.traj_handler.get_trajectory()
+        # self.traj_pos, vel, acc = self.des_pos, np.zeros((3,)), np.zeros((3,))
         
         self.traj_vel = vel
 
