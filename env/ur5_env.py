@@ -145,23 +145,28 @@ class UR5Env:
 
     def check_if_alive(self):
         # self.is_alive = True if (self.torso_zpos > 0.3 and self.torso_zpos < 1.25) else False
-        self.is_alive = self.is_alive and self.viewer.is_alive
+        if getattr(self, "viewer", None) is not None:
+            self.is_alive = self.is_alive and self.viewer.is_alive
 
     def _mj_init(self):
-        self.model = mj.MjModel.from_xml_path(self.xml_path)    
-        self.data = mj.MjData(self.model) 
-        self.viewer = mujoco_viewer.MujocoViewer(self.model, self.data,hide_menus=False)
-        self.viewer.cam.azimuth = self.cam_azi
-        self.viewer.cam.elevation = self.cam_ele
-        self.viewer.cam.distance =  self.cam_dist
+        self.model = mj.MjModel.from_xml_path(self.xml_path)
+        self.data = mj.MjData(self.model)
+        self.viewer = None
+        if self.is_render:
+            self.viewer = mujoco_viewer.MujocoViewer(self.model, self.data, hide_menus=False)
+            self.viewer.cam.azimuth = self.cam_azi
+            self.viewer.cam.elevation = self.cam_ele
+            self.viewer.cam.distance = self.cam_dist
 
 
     def render(self):
+        if self.viewer is None:
+            return
         self.add_obstacle()
         self.viewer.render()
 
     def add_obstacle(self,):
-        if self.cbf:
+        if self.cbf and self.viewer is not None:
             self.viewer.add_marker(
             pos=self.obstacle, 
             size=np.ones((3,)) * 0.05, 
@@ -170,6 +175,6 @@ class UR5Env:
             label="obstacle")
             
     def stop(self):
-        if self.viewer.is_alive:
+        if getattr(self, "viewer", None) is not None and self.viewer.is_alive:
             self.viewer.close()
 

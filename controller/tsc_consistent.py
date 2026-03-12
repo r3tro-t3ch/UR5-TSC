@@ -20,10 +20,9 @@ class ConsistentTaskSpaceController:
             )
 
     def get_ineq_constraint(self, tau_max):
-        C_tau = np.concatenate(
-            [np.identity(6), -np.identity(6)]
-        )
-        c_tau = np.ones((self.env.model.nu * 2,)) * tau_max
+        n = int(self.env.model.nu)
+        C_tau = np.concatenate([np.eye(n), -np.eye(n)])
+        c_tau = np.ones((2 * n,)) * tau_max
         
         if self.cbf:
             C_cbf, c_cbf = self.cbf_filter.get_cbf_ineq_constraints_q(
@@ -52,7 +51,8 @@ class ConsistentTaskSpaceController:
 
         C, c = self.get_ineq_constraint(150)
 
-        H = np.identity(6)
+        n = int(self.env.model.nu)
+        H = np.eye(n)
         g = -tau.T
 
         tau_safe = solve_qp(P=H, q=g, G=C, h=c, solver="cvxopt", verbose=False)

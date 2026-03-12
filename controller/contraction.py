@@ -1,98 +1,49 @@
 import numpy as np
-from env.ur5_pinocchio_env import UR5EnvPinocchio
 
 class Contraction:
 
-    def __init__(self, pin_env : UR5EnvPinocchio):
+    def __init__(self, 
+                 Kp_pos : np.float64, 
+                 Kd_pos : np.float64,
+                 Kp_ori : np.float64, 
+                 Kd_ori : np.float64
+                 ):
         
-        # Pinnochio environment
-        self.pin_env    = pin_env
+        self.Kp = np.diag([Kp_pos, Kp_pos, Kp_pos, Kp_ori, Kp_ori, Kp_ori])
+        self.Kd = np.diag([Kd_pos, Kd_pos, Kd_pos, Kd_ori, Kd_ori, Kd_ori])
 
-    def dfdx(self, q : np.ndarray, q_dot : np.ndarray):
+    def _error_dynamics(self):
 
-        C       = self.pin_env.C(q, q_dot)
-        Minv    = self.pin_env.Minv(q)
+        # e_dot  = 0 I
+        # e_ddot = -Kp(x_d - x) - Kd(x_dot_d - x_dot)
 
-        # derivatives wrt q
-        dMinvdq = self.pin_env.dMinvdq(q)
-        dCdq    = self.pin_env.dCdq(q, q_dot)
+        A = np.block(
+            [
+                [np.zeros((6,6)),   np.identity(6)],
+                [-self.Kp,          -self.Kd]
+            ]
+        )
+        
+        # A_sym = (A.T + A)/2
 
-        # derivatives wrt qdot
-        dCdqdot = self.pin_env.dCdqdot(q, q_dot)
+        eigs = np.linalg.eigvals(A)
 
-        # derivatives wrt both states
-        # here the tensor operation goes as follows
-        # dM_inv/dq_i @ C -> (ixj) @ (jx1) = (ix1) gives basis vectors
-        # so now we have k number of (ix1) basis vector
-        # we can think of this multiplication as happening on k index and bought forward so it is (i x k)
-        dfdq    = - np.einsum('ijk,j->ik', dMinvdq, C) - Minv @ dCdq
-        dfdqdot = - Minv @ dCdqdot
+        eig   = np.max(eigs)
 
-        zeros   = np.zeros((self.pin_env.model.nq, self.pin_env.model.nq))
-        I       = np.identity(self.pin_env.model.nq)
-
-        dfdx = np.block([
-            [zeros, I],
-            [dfdq, dfdqdot]
-        ])
-
-        return dfdx
+        return A, eig
     
-    def dgudx(self, q : np.ndarray, tau : np.ndarray):
+    def get_upper_bound(self, t, x, x_d, x_dot, x_dot_d):
 
-        dMinvdq = self.pin_env.dMinvdq(q)
-        zeros   = np.zeros((self.pin_env.model.nq, self.pin_env.model.nq))
+        z = np.concatenate([x - x_d, x_dot - x_dot_d])
 
-        # dM_inv/dq @ tau
-        # we can think of this tensor vector operation as follows
-        # tau has k elements and dMdq has k (i x j) matrices
-        # each scalar tau_k is multipled with kth dM_inv/dq and added together
-        # this results in a matrix (i x j)
-        dgudq   = np.einsum('ijk,k->ij', dMinvdq, tau)
+        z_norm = np.linalg.norm(z)
 
-        dgudx = np.block([
-            [zeros, zeros],
-            [dgudq, zeros]
-        ])
+        _, eig = self._error_dynamics()
 
-        print("dgudx : ", dgudx.shape)
+        exp = np.exp(eig * t)
 
-        return dgudx
+        return z_norm, exp
     
-    def A(self, q : np.ndarray, q_dot : np.ndarray, tau : np.ndarray):
-        # this is the closed loop form of the dynamics
-        return self.dfdx(q, q_dot) + self.dgudx(q, tau)
-
-    def M(self, q):
-        return self.pin_env.Lambda(q)
-    
-    def W_dot(self, q, q_dot):
-
-        Minv    = self.pin_env.Minv(q)
-
-        dMinvdq = self.pin_env.dMinvdq(q)
-
-        # M(q)
-        # Mdot = dMdq @ qdot
-        # we can think of this tensor vector operation as follows
-        # qdot has k elements and dMdq has k (i x j) matrices
-        # each scalar qdot_k is multipled with kth dMdq and added together
-        # this results in a matrix (i x j)
-        M_dot    = np.einsum('ijk,k->ij', dMinvdq, q_dot) 
-
-        return - Minv @ M_dot @ Minv
-    
-    def contraction_condition(self, q, q_dot, tau, _lambda):
-
-        W       = np.kron(np.identity(2), self.M(q))
-        W_dot   = np.kron(np.identity(2), self.W_dot(q, q_dot))
-        A       = self.A(q, q_dot, tau)
-
-        C       = W_dot - A @ W - W @ A.T + 2 * _lambda * W
-
-        eigvals = np.linalg.eigvalsh(C)
-
-        return C, eigvals, np.all(eigvals > 0)
-
 
     
+

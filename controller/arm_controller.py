@@ -22,7 +22,8 @@ class ArmController:
 
         self.T              = args['T']
 
-        self.cbf            = args['cbf']
+        # Optional arg: default off if not provided by the caller.
+        self.cbf            = args.get('cbf', False)
 
         self.init           = True
 
