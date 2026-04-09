@@ -1,11 +1,11 @@
 import numpy as np
-from env.ur5_env import UR5Env
+from env.ur_env import UR10eEnv
 from qpsolvers import solve_qp
 from .clf import CLF
 
 class CLFTaskSpaceController:
 
-    def __init__(self,  env : UR5Env, alpha : np.float64, P : np.ndarray, D : np.ndarray):
+    def __init__(self,  env : UR10eEnv, alpha : np.float64, P : np.ndarray, D : np.ndarray):
         
         # mujoco parameters
         self.env        = env

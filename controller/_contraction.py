@@ -1,5 +1,5 @@
 import numpy as np
-from env.ur5_pinocchio_env import UR5EnvPinocchio
+from env.ur_pinocchio_env import UR5EnvPinocchio
 
 class Contraction:
 

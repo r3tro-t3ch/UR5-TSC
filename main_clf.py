@@ -3,10 +3,10 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 def main(args):
-    from env.ur5_env import UR5Env
+    from env.ur_env import UR10eEnv
     from controller.arm_controller_clf import CLFArmController
     
-    env = UR5Env(args)
+    env = UR10eEnv(args)
     controller = CLFArmController(env, args)
     torq = np.zeros((6,))
 

@@ -1,6 +1,6 @@
 import numpy as np
-from env.ur5_pinocchio_env import UR5EnvPinocchio
-from env.ur5_env import UR5Env
+from env.ur_pinocchio_env import UR5EnvPinocchio
+from env.ur_env import UR10eEnv
 import mujoco
 
 
@@ -18,7 +18,7 @@ args['des_ori_q']   = np.array([1, 0.0, 0.0, 0.0])
 args['cbf']             = False
 
 # pin_env     = UR5EnvPinocchio(args)
-mj_env      = UR5Env(args)
+mj_env      = UR10eEnv(args)
 
 q = np.ones(6) * 1.57
 v = np.zeros(6)

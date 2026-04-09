@@ -2,12 +2,12 @@ from controller.task_space_objective import *
 from controller.tsc_consistent import ConsistentTaskSpaceController
 from controller.tsc_inconsistent import InconsistentTaskSpaceController
 from utils.data_logger import Logger
-from env.ur5_env import UR5Env
+from env.ur_env import UR10eEnv
 from utils.trajectory_generator import TrajectoryGenerator, TrajectoryGenerator3rdOrderMidPoint
 
 class ArmController:
 
-    def __init__(self, env : UR5Env, args) -> None:
+    def __init__(self, env : UR10eEnv, args) -> None:
         
         self.env = env
         self.time = 0

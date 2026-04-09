@@ -1,10 +1,10 @@
 import numpy as np
 from utils.utils import *
-from env.ur5_env import UR5Env
+from env.ur_env import UR10eEnv
 from utils.utils import skew_symmetric
 
 class EEPositionTask():
-    def __init__(self,env : UR5Env,w=1,Kp_track=800,Kd_track=20,Kd_damp=20):
+    def __init__(self,env : UR10eEnv,w=1,Kp_track=800,Kd_track=20,Kd_damp=20):
         self.env = env
         self.Kp_track  = Kp_track*np.diag([1,1,1])
         self.Kd_track  = Kd_track*np.diag([1,1,1])
@@ -26,7 +26,7 @@ class EEPositionTask():
         return H,g
             
 class EEOrientationTask():
-    def __init__(self,env : UR5Env,w=50,Kp_track=800,Kd_track=20,Kd_damp=20):
+    def __init__(self,env : UR10eEnv,w=50,Kp_track=800,Kd_track=20,Kd_damp=20):
         self.env = env
         self.Kp  = Kp_track * np.diag([1,1,1])
         self.Kd  = Kd_track * np.diag([1,1,1])
@@ -66,7 +66,7 @@ class EEOrientationTask():
 class TaskConsistantEETask:
 
     def __init__(self,
-                 env : UR5Env,
+                 env : UR10eEnv,
                  Kp_track_pos=800,
                  Kd_track_pos=20,
                  Kd_damp_pos=20,
@@ -130,7 +130,7 @@ class TaskConsistantEETask:
 
 class TaskConsistantJointTask:
 
-    def __init__(self, env : UR5Env, w=1, Kp_track=100, Kd_track=10, Kd_damp=10):
+    def __init__(self, env : UR10eEnv, w=1, Kp_track=100, Kd_track=10, Kd_damp=10):
 
         self.env = env
         self.Kp_track   = np.identity(env.model.nu) * Kp_track

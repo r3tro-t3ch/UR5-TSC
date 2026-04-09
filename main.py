@@ -3,10 +3,10 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 def main(args):
-    from env.ur5_env import UR5Env
+    from env.ur_env import UR10eEnv
     from controller.arm_controller import ArmController
     
-    env = UR5Env(args)
+    env = UR10eEnv(args)
     controller = ArmController(env, args)
     torq = np.zeros((6,))
 
@@ -94,17 +94,17 @@ if __name__ == "__main__":
 
     args = {}
     args['is_render']   = True
-    args['xml_file']    = 'ur5e.xml'
+    args['xml_file']    = 'ur10e.xml'
     args['cam_azi']     = 90
     args['cam_ele']     = -20
     args['cam_dist']    =  5
 
-    args['des_pos']     = np.array([0.6,0.6,0.6])
+    args['des_pos']     = np.array([0.8,0.8,0.8])
     args['des_ori_q']   = np.array([1, 0.0, 0.0, 0.0])
 
     # cbf
-    args['cbf']             = False
-    args['obstacle_pos']    = np.array([0.55, 0.35, 0.75])
+    args['cbf']             = True
+    args['obstacle_pos']    = np.array([0.75, 0.5, 0.75])
     args['obstacle_r']      = 0.1
     args['alpha']           = np.array([50,100])
 

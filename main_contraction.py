@@ -13,10 +13,10 @@ def get_quat_error(q, q_d):
     return e
 
 def main(args):
-    from env.ur5_env import UR5Env
+    from env.ur_env import UR10eEnv
     from controller.arm_controller import ArmController
     
-    env = UR5Env(args)
+    env = UR10eEnv(args)
     controller = ArmController(env, args)
     torq = np.zeros((6,))
 

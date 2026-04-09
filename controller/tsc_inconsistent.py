@@ -1,14 +1,14 @@
 
 import numpy as np
 # import qpSWIFT as qp
-from env.ur5_env import UR5Env
+from env.ur_env import UR10eEnv
 from qpsolvers import solve_qp
 from .cbf import CBF
 
 class InconsistentTaskSpaceController:
 
 
-    def __init__(self, env : UR5Env, obstacle : np.ndarray = None, alpha : np.ndarray = None, obstacle_r = None, cbf=False):
+    def __init__(self, env : UR10eEnv, obstacle : np.ndarray = None, alpha : np.ndarray = None, obstacle_r = None, cbf=False):
         
         # mujoco parameters
         self.env = env
