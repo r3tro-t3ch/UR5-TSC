@@ -18,3 +18,10 @@ def skew_symmetric(vector):
     mat[2,1] = vector[0]
 
     return mat
+
+def get_quat_error(q, q_d):
+        a = np.array(q_d[1:4])
+        b = np.array(q[1:4])
+        q_d_x = skew_symmetric(a)
+        e = q[0]*a - q_d[0]*b - q_d_x @ b
+        return e
