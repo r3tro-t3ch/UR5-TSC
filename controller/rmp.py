@@ -31,6 +31,9 @@ class RMP:
         # obstacle and radius
         self.obstacles  = obstacles
         self.r          = obstacle_r
+        self.alpha_obs  = alpha_obs
+        self.beta_obs   = beta_obs
+
 
     def position_tracking_policy(self, target_pos):
         f = self.alpha * self.s(target_pos - self.env.ee_pos) - self.beta * self.env.ee_vel
@@ -48,4 +51,22 @@ class RMP:
         A = np.identity(3)
 
         return f, A
+    
+    def collision_policy(self, obs_pos):
+
+        v = self.env.ee_pos - obs_pos
+
+        d = np.linalg.norm(v)
+        
+        v_hat = v/d
+
+        f = self.alpha_obs * d * v_hat - self.beta_obs * d * (v_hat @ v_hat.T) @ self.env.ee_vel
+
+        def w(d):
+            return np.exp(-d)
+
+        A = w(d) * self.s(f) @ self.s(f).T
+
+        return f, A
+    
     
