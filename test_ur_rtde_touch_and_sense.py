@@ -60,6 +60,7 @@ contact = rtde_c.moveUntilContact(
     [0, 0, -0.005, 0, 0, 0]
 )
 
+print("Wrench on contact : ", rtde_r.getActualTCPForce())
 time.sleep(1)
 
 touch_poses.append(rtde_r.getActualTCPPose())
@@ -69,7 +70,7 @@ rtde_c.moveL(left_end_pose)
 contact = rtde_c.moveUntilContact(
     [0, 0.005, 0, 0, 0, 0]
 )
-
+print("Wrench on contact : ", rtde_r.getActualTCPForce())
 time.sleep(1)
 
 touch_poses.append(rtde_r.getActualTCPPose())
@@ -82,7 +83,9 @@ contact = rtde_c.moveUntilContact(
     [0, 0, -0.005, 0, 0, 0]
 )
 
+print("Wrench on contact : ", rtde_r.getActualTCPForce())
 time.sleep(1)
+
 
 touch_poses.append(rtde_r.getActualTCPPose())
 
@@ -91,7 +94,7 @@ rtde_c.moveL(right_end_pose)
 contact = rtde_c.moveUntilContact(
     [0, 0.005, 0, 0, 0, 0]
 )
-
+print("Wrench on contact : ", rtde_r.getActualTCPForce())
 time.sleep(1)
 
 touch_poses.append(rtde_r.getActualTCPPose())
@@ -102,3 +105,12 @@ rtde_c.moveL(start_pose)
 
 
 print("Pose on contact : ", touch_poses)
+
+# output
+# Pose on contact :  
+# [
+# [-0.2268035981528113, 0.7845826671967524, 0.3156868889131381, 9.875287990248081e-05, -2.1824582587356707, -2.149695730556573],
+# [-0.2268414648170323, 0.802205506308417, 0.3213441044930284, 0.00012926451952690948, -2.1825334563453027, -2.1495730464941913],
+# [0.2874131929151962, 0.8019049072526326, 0.3122546543631593, 0.04512811605328812, -2.153392207831968, -2.178473505790722], 
+# [0.2874211680896507, 0.8082524008519458, 0.3230183318756137, 0.045167528664406424, -2.153386435540462, -2.178462763669421]
+# ]
