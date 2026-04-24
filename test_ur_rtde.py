@@ -33,14 +33,14 @@ print(f"Current pose: {current_pose}")
 
 # Move 5 cm up in Z
 target_pose = current_pose.copy()
-target_pose[1] += 0.3
+target_pose[2] += 0.3
 
 # Execute linear motion
 rtde_c.moveL(target_pose, speed=0.25, acceleration=0.5, asynchronous=True)
 
 # Wait for movement to complete
 time.sleep(0.5)
-while abs(rtde_r.getActualTCPSpeed()[1]) > 0.01:
+while abs(rtde_r.getActualTCPSpeed()[2]) > 0.01:
     current_pose = rtde_r.getActualTCPPose()
     print(f"Current pose: {current_pose}")
     time.sleep(0.01)
