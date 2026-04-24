@@ -13,3 +13,4 @@
 # stopContactDetection()
 # getJacobain()
 # getJacobianTimeDerivative
+# bool moveUntilContact(const std::vector<double> &xd, const std::vector<double> &direction = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, double acceleration = 0.5)
