@@ -1,10 +1,38 @@
+# SPDX-License-Identifier: MIT
+# MIT License
+#
+# Copyright (c) 2026 Vishnu Joshi
+# Affiliation: CoRIS, Oregon State University
+# Email: joshivis@oregonstate.edu
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Overview:
+# Wrap a UR arm model in MuJoCo with selectable joint actuation modes,
+# optional visualization, and state updates. Expose end-effector kinematics
+# and task-space dynamics using MuJoCo or the optional Pinocchio backend.
+
 import mujoco as mj
-import mujoco_viewer
 import numpy as np
-import os
+from pathlib import Path
 from utils.utils import quat2euler
-from scipy.linalg import null_space
-from .ur_pinocchio_env import UR5EnvPinocchio
+from .actuator_modes import ActuatorModes
 
 class UR10eEnv:
 
@@ -24,18 +52,21 @@ class UR10eEnv:
         
         self.is_render      = args['is_render']
         self.xml_file       = args['xml_file']
-        xml_directory       = os.getcwd() + "/env"
-        self.xml_path       = os.path.join(xml_directory,self.xml_file)
-        self.cam_azi        = args['cam_azi']
-        self.cam_ele        = args['cam_ele']
-        self.cam_dist       = args['cam_dist']
+        self.xml_path       = str(Path(__file__).resolve().parent / self.xml_file)
+        self.cam_azi        = args.get('cam_azi', 90)
+        self.cam_ele        = args.get('cam_ele', -20)
+        self.cam_dist       = args.get('cam_dist', 5)
         self._mj_init()             # initialize mujoco data structures
         self.is_alive       = True
+        mj.mj_resetDataKeyframe(self.model, self.data, self.model.keyframe("home").id)
+        self.actuators = ActuatorModes(self.model, self.data, args.get("control_mode", "torque"))
+        self.n_joints = self.actuators.n_joints
 
         # dynamics computation
         self.use_pin_dyn    = args['use_pinnochio_dynamics']
 
         if self.use_pin_dyn:
+            from .ur_pinocchio_env import UR5EnvPinocchio
             self.pinocchio_env  = UR5EnvPinocchio(args)
 
         # add obstacles
@@ -80,16 +111,27 @@ class UR10eEnv:
         # robot physical parameters relevant for control
         self.total_mass  = np.sum(self.model.body_mass[1:])
 
-    def update_cntrl(self,torq):
-        # torques
-        self.data.ctrl = torq
+    @property
+    def control_mode(self):
+        return self.actuators.mode
 
-    def step(self,torq=np.zeros((6,))):
-        self.update_cntrl(torq)
-        mj.mj_step(self.model,self.data)
+    def set_control_mode(self, mode):
+        self.actuators.set_mode(mode)
+        self.update_robot_states()
+
+    def update_cntrl(self, command):
+        """Six joint commands: N m, rad, or rad/s according to control_mode."""
+        self.actuators.set_command(command)
+
+    def step(self, command=None):
+        if command is not None:
+            self.update_cntrl(command)
+        mj.mj_step(self.model, self.data)
+        # Refresh derived quantities at the newly integrated state.
+        mj.mj_forward(self.model, self.data)
+        self.update_robot_states()
         if self.is_render:
             self.render()
-        self.update_robot_states()
         self.check_if_alive()
 
     def update_robot_states(self):
@@ -145,15 +187,19 @@ class UR10eEnv:
 
     def check_if_alive(self):
         # self.is_alive = True if (self.torso_zpos > 0.3 and self.torso_zpos < 1.25) else False
-        self.is_alive = self.is_alive and self.viewer.is_alive
+        if self.viewer is not None:
+            self.is_alive = self.is_alive and self.viewer.is_alive
 
     def _mj_init(self):
         self.model = mj.MjModel.from_xml_path(self.xml_path)    
         self.data = mj.MjData(self.model) 
-        self.viewer = mujoco_viewer.MujocoViewer(self.model, self.data,hide_menus=False)
-        self.viewer.cam.azimuth = self.cam_azi
-        self.viewer.cam.elevation = self.cam_ele
-        self.viewer.cam.distance =  self.cam_dist
+        self.viewer = None
+        if self.is_render:
+            import mujoco_viewer
+            self.viewer = mujoco_viewer.MujocoViewer(self.model, self.data, hide_menus=False)
+            self.viewer.cam.azimuth = self.cam_azi
+            self.viewer.cam.elevation = self.cam_ele
+            self.viewer.cam.distance = self.cam_dist
 
 
     def render(self):
@@ -170,6 +216,7 @@ class UR10eEnv:
             label="obstacle")
             
     def stop(self):
-        if self.viewer.is_alive:
+        if self.viewer is not None and self.viewer.is_alive:
             self.viewer.close()
+        self.is_alive = False
 

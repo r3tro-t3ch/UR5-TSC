@@ -1,22 +1,21 @@
 <mujoco model="ur5e">
   <compiler angle="radian" meshdir="assets" autolimits="true"/>
 
-  <option integrator="implicitfast"/>
+  <option integrator="implicitfast" actuatorgroupdisable="1 2"/>
 
   <default>
     <default class="ur5e">
       <material specular="0.5" shininess="0.25"/>
       <joint axis="0 1 0" range="-6.28319 6.28319" armature="0.1"/>
-      <general gaintype="fixed" biastype="affine" ctrlrange="-6.2831 6.2831" gainprm="2000" biasprm="0 -2000 -400"
-        forcerange="-150 150"/>
+
       <default class="size3">
         <default class="size3_limited">
           <joint range="-3.1415 3.1415"/>
-          <general ctrlrange="-3.1415 3.1415"/>
+
         </default>
       </default>
       <default class="size1">
-        <general gainprm="500" biasprm="0 -500 -100" forcerange="-28 28"/>
+
       </default>
       <default class="visual">
         <geom type="mesh" contype="0" conaffinity="0" group="2"/>
@@ -129,15 +128,46 @@
   </worldbody>
 
   <actuator>
-    <general class="size3" name="shoulder_pan" joint="shoulder_pan_joint"/>
-    <general class="size3" name="shoulder_lift" joint="shoulder_lift_joint"/>
-    <general class="size3_limited" name="elbow" joint="elbow_joint"/>
-    <general class="size1" name="wrist_1" joint="wrist_1_joint"/>
-    <general class="size1" name="wrist_2" joint="wrist_2_joint"/>
-    <general class="size1" name="wrist_3" joint="wrist_3_joint"/>
+    <!-- Groups: 0 torque, 1 position, 2 velocity. Enable only one at a time. -->
+    <motor name="shoulder_pan_torque" joint="shoulder_pan_joint" group="0" gear="1"
+      ctrllimited="true" ctrlrange="-150 150" forcelimited="true" forcerange="-150 150"/>
+    <motor name="shoulder_lift_torque" joint="shoulder_lift_joint" group="0" gear="1"
+      ctrllimited="true" ctrlrange="-150 150" forcelimited="true" forcerange="-150 150"/>
+    <motor name="elbow_torque" joint="elbow_joint" group="0" gear="1"
+      ctrllimited="true" ctrlrange="-150 150" forcelimited="true" forcerange="-150 150"/>
+    <motor name="wrist_1_torque" joint="wrist_1_joint" group="0" gear="1"
+      ctrllimited="true" ctrlrange="-28 28" forcelimited="true" forcerange="-28 28"/>
+    <motor name="wrist_2_torque" joint="wrist_2_joint" group="0" gear="1"
+      ctrllimited="true" ctrlrange="-28 28" forcelimited="true" forcerange="-28 28"/>
+    <motor name="wrist_3_torque" joint="wrist_3_joint" group="0" gear="1"
+      ctrllimited="true" ctrlrange="-28 28" forcelimited="true" forcerange="-28 28"/>
+    <position name="shoulder_pan_position" joint="shoulder_pan_joint" group="1" gear="1" kp="2000" kv="400"
+      ctrllimited="true" ctrlrange="-6.2831 6.2831" forcelimited="true" forcerange="-150 150"/>
+    <position name="shoulder_lift_position" joint="shoulder_lift_joint" group="1" gear="1" kp="2000" kv="400"
+      ctrllimited="true" ctrlrange="-6.2831 6.2831" forcelimited="true" forcerange="-150 150"/>
+    <position name="elbow_position" joint="elbow_joint" group="1" gear="1" kp="2000" kv="400"
+      ctrllimited="true" ctrlrange="-3.1415 3.1415" forcelimited="true" forcerange="-150 150"/>
+    <position name="wrist_1_position" joint="wrist_1_joint" group="1" gear="1" kp="500" kv="100"
+      ctrllimited="true" ctrlrange="-6.2831 6.2831" forcelimited="true" forcerange="-28 28"/>
+    <position name="wrist_2_position" joint="wrist_2_joint" group="1" gear="1" kp="500" kv="100"
+      ctrllimited="true" ctrlrange="-6.2831 6.2831" forcelimited="true" forcerange="-28 28"/>
+    <position name="wrist_3_position" joint="wrist_3_joint" group="1" gear="1" kp="500" kv="100"
+      ctrllimited="true" ctrlrange="-6.2831 6.2831" forcelimited="true" forcerange="-28 28"/>
+    <velocity name="shoulder_pan_velocity" joint="shoulder_pan_joint" group="2" gear="1" kv="400"
+      ctrllimited="true" ctrlrange="-1.0 1.0" forcelimited="true" forcerange="-150 150"/>
+    <velocity name="shoulder_lift_velocity" joint="shoulder_lift_joint" group="2" gear="1" kv="400"
+      ctrllimited="true" ctrlrange="-1.0 1.0" forcelimited="true" forcerange="-150 150"/>
+    <velocity name="elbow_velocity" joint="elbow_joint" group="2" gear="1" kv="400"
+      ctrllimited="true" ctrlrange="-1.0 1.0" forcelimited="true" forcerange="-150 150"/>
+    <velocity name="wrist_1_velocity" joint="wrist_1_joint" group="2" gear="1" kv="100"
+      ctrllimited="true" ctrlrange="-1.0 1.0" forcelimited="true" forcerange="-28 28"/>
+    <velocity name="wrist_2_velocity" joint="wrist_2_joint" group="2" gear="1" kv="100"
+      ctrllimited="true" ctrlrange="-1.0 1.0" forcelimited="true" forcerange="-28 28"/>
+    <velocity name="wrist_3_velocity" joint="wrist_3_joint" group="2" gear="1" kv="100"
+      ctrllimited="true" ctrlrange="-1.0 1.0" forcelimited="true" forcerange="-28 28"/>
   </actuator>
 
   <keyframe>
-    <key name="home" qpos="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0" ctrl="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0"/>
+    <key name="home" qpos="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0" ctrl="0 0 0 0 0 0 -1.5708 -1.5708 1.5708 -1.5708 -1.5708 0 0 0 0 0 0 0"/>
   </keyframe>
 </mujoco>

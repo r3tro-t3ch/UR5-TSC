@@ -1,3 +1,34 @@
+# SPDX-License-Identifier: MIT
+# MIT License
+#
+# Copyright (c) 2026 Vishnu Joshi
+# Affiliation: CoRIS, Oregon State University
+# Email: joshivis@oregonstate.edu
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Overview:
+# Run a task-space tracking experiment and compare the observed error
+# evolution with an empirically fitted exponential decay curve. Plot tracking
+# results and error diagnostics; the fitted curve is not a verified
+# contraction bound.
+
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -18,7 +49,7 @@ def main(args):
     
     env = UR10eEnv(args)
     controller = ArmController(env, args)
-    torq = np.zeros((6,))
+    torq = np.zeros(env.n_joints)
 
     contraction = Contraction(
         args['position_task_kp_track'],
@@ -27,8 +58,6 @@ def main(args):
         args['orientation_task_kd_track']
     )
 
-    env.data.qpos = env.model.keyframe("home").qpos
-    env.data.qvel = env.model.keyframe("home").ctrl
 
     env.pinocchio_env.set_state(
         env.data.qpos,
@@ -185,6 +214,7 @@ if __name__ == "__main__":
 
     args = {}
     args['is_render']   = True
+    args['control_mode'] = 'torque'  # These controllers output joint torques.
     args['xml_file']    = 'ur5e.xml'
     args['cam_azi']     = 90
     args['cam_ele']     = -20
