@@ -1,0 +1,29 @@
+name: urarm_env
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  - pip
+  # numerics / plotting
+  - numpy>=2.3,<2.4
+  - scipy=1.18
+  - matplotlib=3.11
+  # dynamics + optimisation (pinocchio.casadi is used by env/ur_pinocchio_env.py)
+  - pinocchio=4.1
+  - casadi=3.7
+  - cvxopt=1.3.3
+  - pip:
+      # simulation
+      - mujoco==3.5.0
+      - mujoco-python-viewer==0.1.4
+      - glfw==2.10.0
+      - PyOpenGL==3.1.10
+      # QP front-end (solver="cvxopt" is used by the controllers)
+      - qpsolvers==4.8.2
+      # hardware: UR RTDE, Intel RealSense, vision
+      - ur_rtde==1.6.5
+      - pyrealsense2==2.58.4.10922
+      - opencv-python==5.0.0.93
+      # 3D point cloud viewer
+      - open3d==0.20.0
