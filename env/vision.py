@@ -24,42 +24,35 @@
 # SOFTWARE.
 #
 # Overview:
-# Provide quaternion-to-Euler conversion for scalar-first input quaternions
-# and construction of three-dimensional skew-symmetric matrices used by
-# orientation tracking calculations. Convert UR poses (position and rotation
-# vector) to 4x4 transforms.
+# One camera interface for real and simulated runs. With sim set, frames are
+# rendered by MuJoCo with the arm following URSim; otherwise they come from the
+# RealSense D435. Either way: BGR color, depth in meters, pinhole intrinsics.
 
-import numpy as np
-from scipy.spatial.transform import Rotation as R
+from env.sim_env import SimEnv
+from test_vision import start_camera, get_frames
 
-def quat2euler(quat):
-    _quat = np.concatenate([quat[1:], quat[:1]])
-    r = R.from_quat(_quat)
-    euler = r.as_euler('xyz', degrees=False)
-    return euler
 
-def skew_symmetric(vector):
-    mat = np.zeros((vector.shape[0], vector.shape[0]))
+class Vision:
 
-    mat[0,1] = -vector[2]
-    mat[0,2] = vector[1]
-    mat[1,0] = vector[2]
-    mat[1,2] = -vector[0]
-    mat[2,0] = -vector[1]
-    mat[2,1] = vector[0]
+    def __init__(self, args):
+        self.sim = args['sim']
 
-    return mat
+        # simulated camera (MuJoCo + URSim) or the real one on the wrist
+        if self.sim:
+            self.sim_env    = SimEnv(args)
+            self.intrinsics = self.sim_env.intrinsics
+        else:
+            self.pipeline, self.align, self.depth_scale, self.intrinsics = start_camera(args)
 
-def pose_to_matrix(pose):
-    # UR pose [x, y, z, rx, ry, rz] (rotation vector) -> 4x4 transform
-    T           = np.eye(4)
-    T[:3, :3]   = R.from_rotvec(pose[3:]).as_matrix()
-    T[:3, 3]    = pose[:3]
-    return T
+    def get_frames(self):
+        # color (BGR) and depth (m, 0 = no reading) images, aligned pixel to pixel
+        if self.sim:
+            self.sim_env.sync()     # the rendered arm first moves to where URSim's arm is now
+            return self.sim_env.render()
+        return get_frames(self.pipeline, self.align, self.depth_scale)
 
-def get_quat_error(q, q_d):
-        a = np.array(q_d[1:4])
-        b = np.array(q[1:4])
-        q_d_x = skew_symmetric(a)
-        e = q[0]*a - q_d[0]*b - q_d_x @ b
-        return e
+    def close(self):
+        if self.sim:
+            self.sim_env.close()
+        else:
+            self.pipeline.stop()
