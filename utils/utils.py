@@ -27,8 +27,9 @@
 # Provide quaternion-to-Euler conversion for scalar-first input quaternions
 # and construction of three-dimensional skew-symmetric matrices used by
 # orientation tracking calculations. Convert UR poses (position and rotation
-# vector) to 4x4 transforms and back. UR forward kinematics (DH) and distances
-# to the arm's three singularities (shoulder, elbow, wrist).
+# vector) to 4x4 transforms and back. UR forward kinematics (DH), distances
+# to the arm's three singularities (shoulder, elbow, wrist) and which of the
+# eight IK solutions (branches) a joint configuration is.
 
 import numpy as np
 from scipy.spatial.transform import Rotation as R
@@ -93,6 +94,15 @@ def singularity_margins(q, dh=UR10E_DH):
     return {'shoulder'  : np.hypot(p05[0], p05[1]) - dh['d'][3],
             'elbow'     : abs(np.sin(q[2])),
             'wrist'     : abs(np.sin(q[4]))}
+
+def ur_branch(q, dh=UR10E_DH):
+    # which of the eight IK solutions q is, as signs (shoulder, elbow, wrist): the wrist point in front of or
+    # behind the base along the arm's plane, and the signs of sin(q3) and sin(q5). Between two configurations of
+    # the same branch the arm can move without crossing a singularity; across branches it swings far
+    T   = ur_forward_kinematics(q, dh)
+    p05 = T[:3, 3] - dh['d'][5] * T[:3, 2]
+    return (int(np.sign(p05[0] * np.cos(q[0]) + p05[1] * np.sin(q[0]))), int(np.sign(np.sin(q[2]))),
+            int(np.sign(np.sin(q[4]))))
 
 def get_quat_error(q, q_d):
         a = np.array(q_d[1:4])

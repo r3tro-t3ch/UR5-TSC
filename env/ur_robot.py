@@ -106,11 +106,11 @@ class URRobot:
         # zero the wrist force/torque sensor, with the arm at rest and touching nothing
         self.control.zeroFtSensor()
 
-    def press(self, force : float, duration : float, damping : float, limits):
+    def press(self, force : float, duration : float, damping : float, free, limits):
         # force mode about the current TCP for duration (s): push force (N) along the TCP z axis and stay
-        # compliant in rotation about its x and y axes with zero torque, stiff in the rest (limits: speeds
-        # on the compliant axes, allowed deviations on the others); returns the TCP poses and wrenches
-        # of the second half, when the arm should be at rest
+        # compliant with zero torque in the rotations set in free ([x, y, z, rx, ry, rz], 1 = compliant, z must
+        # be 1), stiff in the rest (limits: speeds on the compliant axes, allowed deviations on the others);
+        # returns the TCP poses and wrenches of the second half, when the arm should be at rest
         frame   = list(self.get_tcp_pose())
         poses   = []
         wrench  = []
@@ -118,7 +118,7 @@ class URRobot:
         self.control.forceModeSetDamping(damping)
         while time.time() - start < duration:
             t = self.control.initPeriod()
-            self.control.forceMode(frame, [0, 0, 1, 1, 1, 0], [0, 0, force, 0, 0, 0], 2, list(limits))
+            self.control.forceMode(frame, list(free), [0, 0, force, 0, 0, 0], 2, list(limits))
             if time.time() - start > duration / 2:
                 poses.append(self.get_tcp_pose())
                 wrench.append(self.get_tcp_force())

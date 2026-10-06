@@ -26,10 +26,10 @@
 # Overview:
 # Couple URSim and MuJoCo for testing without hardware. URSim runs the real UR
 # controller; MuJoCo only mirrors its joint angles (no physics) and renders
-# color and depth from a camera on the wrist looking at a wood-colored beam.
-# URSim feels no contact, so the beam box also tells how far a ball can move
-# before it touches. Optionally show the mirrored arm in a mujoco-python-viewer
-# window.
+# color and depth from a camera on the wrist looking at a wood-colored beam,
+# optionally on a wood table and with a ChArUco board for hand_eye.py. URSim
+# feels no contact, so the beam box also tells how far a ball can move before
+# it touches. Optionally show the mirrored arm in a mujoco-python-viewer window.
 
 import mujoco
 import multiprocessing
@@ -39,6 +39,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from rtde_receive import RTDEReceiveInterface
 from scipy.spatial.transform import Rotation as R
+from utils.charuco import make_board, board_image
 from utils.utils import pose_to_matrix
 
 # checked against the UR10e DH parameters: UR's base frame is the MuJoCo 'base' body turned 180 deg about z,
@@ -60,17 +61,43 @@ def build_scene(args):
     spec = mujoco.MjSpec.from_file(str(Path(__file__).resolve().parent / args['xml_file']))
     spec.visual.global_.offwidth, spec.visual.global_.offheight = args['width'], args['height']
 
-    # wrist camera at cam_in_flange from UR's flange (the same transform the robot uses as TCP)
+    # wrist camera at cam_in_flange from UR's flange (the same transform the robot uses as TCP), or where
+    # sim_cam_in_flange puts it, to test hand_eye.py on a camera that is not where the CAD says
     site            = spec.site('attachment_site')
     T_wrist_site    = np.eye(4)
     T_wrist_site[:3, :3], T_wrist_site[:3, 3] = R.from_quat(site.quat, scalar_first=True).as_matrix(), site.pos
-    pos, quat       = matrix_to_pos_quat(T_wrist_site @ FLANGE_IN_SITE @ pose_to_matrix(args['cam_in_flange']) @ MJ_CAM_IN_OPTICAL)
+    T_flange_cam    = pose_to_matrix(args.get('sim_cam_in_flange') or args['cam_in_flange'])
+    pos, quat       = matrix_to_pos_quat(T_wrist_site @ FLANGE_IN_SITE @ T_flange_cam @ MJ_CAM_IN_OPTICAL)
     spec.body('wrist_3_link').add_camera(name='wrist_camera', pos=pos, quat=quat, fovy=args['sim_fovy'])
 
     # the beam, a wood-colored box placed in UR's base frame
     pos, quat       = matrix_to_pos_quat(UR_BASE_IN_MJ_BASE @ pose_to_matrix(args['beam_pose']))
     spec.body('base').add_geom(type=mujoco.mjtGeom.mjGEOM_BOX, size=np.array(args['beam_size']) / 2,
                                pos=pos, quat=quat, rgba=args['beam_rgba'])
+
+    # the table the robot stands on (optional), a wide slab with its top at table_z in UR's base frame, wood
+    # colored like the real one so the camera has to tell it from the beam
+    if args.get('table_rgba') is not None:
+        pos, quat   = matrix_to_pos_quat(UR_BASE_IN_MJ_BASE @ pose_to_matrix([0, 0.6, args['table_z'] - 0.025, 0, 0, 0]))
+        spec.body('base').add_geom(type=mujoco.mjtGeom.mjGEOM_BOX, size=[1.0, 1.0, 0.025], pos=pos, quat=quat,
+                                   rgba=args['table_rgba'], contype=0, conaffinity=0)
+
+    # the ChArUco board (hand_eye.py only) at board_pose (board frame in UR's base frame): its image stretched
+    # over a plane. MuJoCo draws a plane from its +z side, so the plane is the board frame turned 180 deg about x
+    if args.get('board_pose') is not None:
+        px              = 100                           # texture pixels per square
+        image           = board_image(make_board(args), args, px, args['board_margin'])
+        texture         = spec.add_texture(name='board', type=mujoco.mjtTexture.mjTEXTURE_2D,
+                                           width=image.shape[1], height=image.shape[0], nchannel=3)
+        texture.data    = np.repeat(image[:, :, None], 3, axis=2).tobytes()
+        material        = spec.add_material(name='board', texrepeat=[1, 1], texuniform=False)
+        material.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = 'board'
+        half            = np.array(image.shape[::-1]) * args['square_len'] / px / 2     # plane half sizes (m)
+        margin          = (half * 2 - np.array(args['board_squares']) * args['square_len']) / 2
+        T_plane         = pose_to_matrix(args['board_pose']) @ pose_to_matrix([*(half - margin), 0, np.pi, 0, 0])
+        pos, quat       = matrix_to_pos_quat(UR_BASE_IN_MJ_BASE @ T_plane)
+        spec.body('base').add_geom(type=mujoco.mjtGeom.mjGEOM_PLANE, size=[*half, 1], pos=pos, quat=quat,
+                                   material='board', contype=0, conaffinity=0)
     return spec.compile()
 
 

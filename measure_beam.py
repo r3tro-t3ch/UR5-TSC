@@ -39,27 +39,33 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 from scipy.spatial.transform import Rotation as R
+from env.clearance import load_arm, joint_path, problems, table_problem
 from env.ur_robot import URRobot
 from env.vision import Vision
-from utils.utils import pose_to_matrix, matrix_to_pose, transform_points
-from visual_servo import find_wood_face, near_singularity
+from utils.utils import pose_to_matrix, matrix_to_pose, transform_points, ur_branch, ur_forward_kinematics
+from visual_servo import find_wood_face
 
 # edge finder balls in the flange frame (m), fitted to edge_finder.stl: each plate has three r = 10 mm balls
-# on a 100 mm equilateral triangle, pressing along the plate's outward normal
+# on a 100 mm equilateral triangle, pressing along the plate's outward normal. CAD is the drawing (square L, the
+# edge poses are planned with it); PLATES is the real tool, the drawing with each plate turned by plate_tilts
+# (see tilt_plates, set at the start of main)
 BALL_R  = 0.010
-PLATES  = {'front':  {'balls': np.array([[0.050, -0.0058, 0.014], [-0.050, -0.0058, 0.014], [0.0, -0.0924, 0.014]]),
+CAD     = {'front':  {'balls': np.array([[0.050, -0.0058, 0.014], [-0.050, -0.0058, 0.014], [0.0, -0.0924, 0.014]]),
                       'normal': np.array([0.0, 0.0, 1.0])},
            'top':    {'balls': np.array([[0.050, 0.0442, 0.064], [-0.050, 0.0442, 0.064], [0.0, 0.0442, 0.1506]]),
                       'normal': np.array([0.0, -1.0, 0.0])}}
+PLATES  = {plate: dict(geometry) for plate, geometry in CAD.items()}
 
 # beam frame from the camera: origin at the end face center, x left, y up, z into the beam (as seen by the robot);
 # outward face normals, and the side of the end face where the top plate goes at each edge
 NORMALS = {'front': [0, 0, -1], 'top': [0, 1, 0], 'right': [-1, 0, 0], 'left': [1, 0, 0]}
 
 # the presses in order: (edge, plate), the front plate always on the end face, the top plate on that edge's side
-# face. The side face goes first at every edge: the shelf reaches 160 mm along the tool, so the end face press
-# needs the real side face to keep it clear (the camera's guess can be centimeters off)
-ROUTINE = [('top', 'top'), ('top', 'front'), ('right', 'top'), ('right', 'front'), ('left', 'top'), ('left', 'front')]
+# face. The end face goes first at every edge: the top plate's two near balls sit only 40 mm behind the front
+# plate's tips, so they land well behind the edge (clear of a rounded or chamfered edge) only when the front plate
+# can come close to the measured end face. The shelf clears the side face by the camera's guess, which the
+# hand-eye calibrated camera knows to a few mm
+ROUTINE = [('top', 'front'), ('top', 'top'), ('right', 'front'), ('right', 'top'), ('left', 'front'), ('left', 'top')]
 
 
 def fit_plane(points : np.ndarray):
@@ -104,9 +110,27 @@ def beam_frame(points : np.ndarray):
     return T, {'top': (hi[1] - lo[1]) / 2, 'right': (hi[0] - lo[0]) / 2, 'left': (hi[0] - lo[0]) / 2}
 
 
+def tilt_plates(tilts : dict):
+    # the real tool: each plate of the drawing turned by tilts[plate] (rad) about the edge (flange x) through the
+    # center of its ball tips, where it was measured to sit (plate_tilts)
+    for plate, geometry in CAD.items():
+        turn    = R.from_rotvec([tilts[plate], 0, 0]).as_matrix()
+        pivot   = (geometry['balls'] + BALL_R * geometry['normal']).mean(axis=0)
+        PLATES[plate] = {'balls': (geometry['balls'] - pivot) @ turn.T + pivot, 'normal': turn @ geometry['normal']}
+
+
+def turned(T : np.ndarray, plate : str, angle : float):
+    # flange pose T turned by angle (rad) about its x axis (the edge) through the center of a plate's ball tips
+    pivot           = (CAD[plate]['balls'] + BALL_R * CAD[plate]['normal']).mean(axis=0)
+    turn            = np.eye(4)
+    turn[:3, :3]    = R.from_rotvec([angle, 0, 0]).as_matrix()
+    turn[:3, 3]     = pivot - turn[:3, :3] @ pivot
+    return T @ turn
+
+
 def reach(plate : str):
-    # how far the plate's ball tips are from the flange along the plate's normal (m, < 0 behind the flange)
-    return PLATES[plate]['balls'][0] @ PLATES[plate]['normal'] + BALL_R
+    # how far the drawing's ball tips are from the flange along the plate's normal (m, < 0 behind the flange)
+    return CAD[plate]['balls'][0] @ CAD[plate]['normal'] + BALL_R
 
 
 def camera_planes(T_beam : np.ndarray, half : dict):
@@ -154,11 +178,13 @@ def teach_top_edge(robot, planes : dict, center : np.ndarray, args):
 
 
 def plate_tcp(plate : str):
-    # TCP for pressing with a plate, in the flange frame: at the center of its three ball tips, z along its normal
+    # TCP for pressing with a plate, in the flange frame: at the center of its three ball tips, z along its normal,
+    # x along the line of its two near balls (the edge), so y lies in the plate across the edge (for the top plate,
+    # along the tool axis)
     balls, n    = PLATES[plate]['balls'], PLATES[plate]['normal']
-    x           = balls[0] - balls.mean(axis=0)
+    x           = (balls[0] - balls[1]) / np.linalg.norm(balls[0] - balls[1])
     T           = np.eye(4)
-    T[:3, :3]   = np.column_stack((x / np.linalg.norm(x), np.cross(n, x) / np.linalg.norm(x), n))
+    T[:3, :3]   = np.column_stack((x, np.cross(n, x), n))
     T[:3, 3]    = balls.mean(axis=0) + BALL_R * n
     return T
 
@@ -172,14 +198,22 @@ def retracted(T_edge : np.ndarray, args):
 
 def plan_press(planes : dict, measured : set, center : np.ndarray, edge : str, plate : str, args):
     # one press of a plate at an edge, from the current face estimates: start pose (backed off from the face,
-    # clear of the other face, less so once that face is measured), push direction, farthest travel, retract
+    # clear of the other face, less so once that face is measured), push direction, farthest travel, retract.
+    # The drawing's square L sits on the edge, then the tool turns back by the plate's tilt about its ball tips,
+    # so the real plate lies parallel to its face, and moves along that face until the other plate's nearest
+    # ball is on the other face (before backing off by clear)
     T_edge          = edge_pose(planes, center, edge)
     other           = 'top' if plate == 'front' else 'front'
-    clear           = args['clear_measured'] if (edge if other == 'top' else 'front') in measured else args['clear']
+    other_face      = edge if other == 'top' else 'front'
+    T               = turned(T_edge, plate, -args['plate_tilts'][plate])
+    p, n            = planes[other_face]
+    tips            = transform_points(T, PLATES[other]['balls'] + BALL_R * PLATES[other]['normal'])
+    T[:3, 3]       -= ((tips - p) @ n).min() * n
+    clear           = args['clear_measured'] if other_face in measured else args['clear']
     offset          = np.eye(4)
     offset[:3, 3]   = -args['standoff'] * PLATES[plate]['normal'] - clear * PLATES[other]['normal']
-    start           = T_edge @ offset
-    direction       = T_edge[:3, :3] @ PLATES[plate]['normal']
+    start           = T @ offset
+    direction       = T[:3, :3] @ PLATES[plate]['normal']
     limit           = start.copy()
     limit[:3, 3]   += args['max_travel'] * direction
     return {'edge': edge, 'plate': plate, 'face': 'front' if plate == 'front' else edge,
@@ -198,31 +232,76 @@ def route(prev, press : dict, planes : dict, center : np.ndarray, args):
     return [prev['retract']] + via + [press['retract']]
 
 
-def check_reach(robot, poses : list, q : np.ndarray, args, first_by_joint_move : bool):
-    # follow the joints along a list of poses: each needs an IK solution clear of the singularities, and between
-    # poses no joint may turn more than max_joint_turn (the largest planned turn is the wrist's 90 deg between
-    # edges; more means the controller's solution went the other way round because a straight line move would
-    # take a wrist past its limit). Raises RuntimeError, returns the last joint angles
+def route_home(last : dict, planes : dict, center : np.ndarray, args):
+    # retracted poses after the last press, before the joint move back to the start: back from its edge and through
+    # the top edge (from a side edge, the joint move home swings the level, turned tool low over the table)
+    via = [] if last['edge'] == 'top' else [retracted(edge_pose(planes, center, 'top'), args)]
+    return [last['retract']] + via
+
+
+def line(T_from : np.ndarray, T_to : np.ndarray, args):
+    # poses a straight line move (moveL) passes through: position and rotation interpolated together, at most
+    # step_len (m) and step_angle (rad) apart, the end included
+    turn    = R.from_matrix(T_to[:3, :3] @ T_from[:3, :3].T).as_rotvec()
+    n       = max(1, int(np.ceil(max(np.linalg.norm(T_to[:3, 3] - T_from[:3, 3]) / args['step_len'],
+                                     np.linalg.norm(turn) / args['step_angle']))))
+    poses   = []
+    for i in range(1, n + 1):
+        T           = np.eye(4)
+        T[:3, :3]   = R.from_rotvec(turn * i / n).as_matrix() @ T_from[:3, :3]
+        T[:3, 3]    = T_from[:3, 3] + (T_to[:3, 3] - T_from[:3, 3]) * i / n
+        poses.append(T)
+    return poses
+
+
+def check_reach(robot, arm : dict, poses : list, q : np.ndarray, args, first_by_joint_move : bool):
+    # follow the joints along a list of poses, through every step of the moves between them as the robot makes
+    # them: straight lines (moveL, IK at each step) and, for the first pose when first_by_joint_move, a joint move.
+    # Every step of a line and the end of the joint move must pass clearance.problems (reach, joint limits, the
+    # start's IK branch, singularities, the table), the way of the joint move only the table. From pose to pose no
+    # joint may turn more than max_joint_turn (the largest planned turn is the wrist's 90 deg between edges).
+    # Raises RuntimeError, returns the last joint angles
+    branch, T_prev = ur_branch(q), ur_forward_kinematics(q)
     for i, T in enumerate(poses):
-        q_new = robot.ik(matrix_to_pose(T), q)
-        near  = near_singularity(q_new, args['run_margins']) if q_new is not None else ['out of reach']
-        turn  = np.abs(q_new - q).max() if q_new is not None else 0.0
-        if not near and turn > args['max_joint_turn'] and not (first_by_joint_move and i == 0):
-            near = [f"joint {np.argmax(np.abs(q_new - q)) + 1} would turn {np.degrees(turn):.0f} deg"]
-        if near:
-            raise RuntimeError(f"pose {i} of the route: {', '.join(near)}")
-        q = q_new
+        q_from = q
+        if first_by_joint_move and i == 0:
+            q_to    = robot.ik(matrix_to_pose(T), q)
+            for q_step in [] if q_to is None else joint_path(q, q_to, args['step_angle'])[:-1]:
+                if table_problem(q_step, arm, args):
+                    raise RuntimeError(f"pose {i} of the route: {', '.join(table_problem(q_step, arm, args))}")
+            path    = [q_to]
+        else:
+            path    = []
+            for T_step in line(T_prev, T, args):
+                path.append(robot.ik(matrix_to_pose(T_step), path[-1] if path else q))
+                if path[-1] is None:
+                    break
+        for q in path:
+            near = problems(q, branch, arm, args['run_margins'], args)
+            if near:
+                raise RuntimeError(f"pose {i} of the route: {', '.join(near)}")
+        turn = np.abs(q - q_from).max()
+        if turn > args['max_joint_turn'] and not (first_by_joint_move and i == 0):
+            raise RuntimeError(f"pose {i} of the route: joint {np.argmax(np.abs(q - q_from)) + 1} would turn "
+                               f"{np.degrees(turn):.0f} deg")
+        T_prev = T
     return q
 
 
-def check_plan(robot, planes : dict, center : np.ndarray, args):
-    # before moving: the whole routine as planned from the camera alone must be reachable
+def check_plan(robot, arm : dict, planes : dict, center : np.ndarray, args):
+    # before moving: the whole routine as planned from the camera alone must be reachable, and the joint move
+    # back to the start
     poses, prev = [], None
+    q_home      = robot.get_q()
     for edge, plate in ROUTINE:
         press   = plan_press(planes, set(), center, edge, plate, args)
         poses  += route(prev, press, planes, center, args) + [press['start'], press['limit'], press['start']]
         prev    = press
-    check_reach(robot, poses + [prev['retract']], robot.get_q(), args, True)
+    q = check_reach(robot, arm, poses + route_home(prev, planes, center, args), q_home, args, True)
+    try:
+        check_reach(robot, arm, [ur_forward_kinematics(q_home)], q, args, True)
+    except RuntimeError as error:
+        raise RuntimeError(f"the joint move back to the start, {error}")
 
 
 def aligned(T : np.ndarray, plate : str, normal : np.ndarray):
@@ -249,7 +328,11 @@ def ball_forces(T : np.ndarray, wrench : np.ndarray, plate : str):
 
 def press_face(robot, sim_env, press : dict, args):
     # move in until the first ball touches, then press flat so all three balls rest on the face; records the
-    # flange pose, the three ball centers, each ball's force and whether the arm came to rest; False on a miss
+    # flange pose, the three ball centers, the wrench at the balls' center, each ball's force, the force across
+    # the push, how much the plate still moved, and whether it sat: every ball pushing at least min_ball_force
+    # (no moment about the balls' center that one or two balls would make) and less than max_side_force across
+    # the push (nothing else touching, like the front plate on the end face during a top plate press);
+    # False on a miss
     balls = PLATES[press['plate']]['balls']
     robot.move_l(matrix_to_pose(press['start']), args['lin_speed'], args['lin_acc'])
     if sim_env is None:
@@ -260,10 +343,16 @@ def press_face(robot, sim_env, press : dict, args):
         tcp = plate_tcp(press['plate'])
         robot.set_tcp(matrix_to_pose(tcp))
         poses, wrenches = robot.press(args['press_force'], args['press_time'], args['press_damping'],
-                                      args['press_limits'])
+                                      args['press_free'][press['plate']], args['press_limits'][press['plate']])
         robot.set_tcp([0, 0, 0, 0, 0, 0])
+
+        # judged on the last half of what press() keeps (the last quarter of the press), once the plate has settled
+        poses, wrenches = poses[len(poses) // 2:], wrenches[len(wrenches) // 2:]
         T       = pose_to_matrix(poses.mean(axis=0)) @ np.linalg.inv(tcp)
-        forces  = ball_forces(T, wrenches.mean(axis=0), press['plate'])
+        wrench  = wrenches.mean(axis=0)
+        forces  = ball_forces(T, wrench, press['plate'])
+        push    = (T @ tcp)[:3, 2]
+        side    = np.linalg.norm(wrench[:3] - (wrench[:3] @ push) * push)
         # how much the plate still moved: TCP travel, and its tilt seen at the balls (58 mm from the TCP)
         moving  = max(np.ptp(poses[:, :3], axis=0).max(), np.ptp(poses[:, 3:], axis=0).max() * 0.058)
     else:
@@ -276,14 +365,18 @@ def press_face(robot, sim_env, press : dict, args):
         robot.move_l(matrix_to_pose(T), args['touch_speed'], args['touch_acc'])
         T       = pose_to_matrix(robot.get_tcp_pose())
         forces  = np.full(3, args['press_force'] / 3)
+        wrench  = np.zeros(6)               # URSim feels no force
+        side    = 0.0
         moving  = 0.0
-    press.update(T=T, centers=transform_points(T, balls), forces=forces, moving=moving,
-                 flat=bool(moving < args['still_tol'] and forces.min() > args['min_ball_force']))
+    why     = [f"ball {i + 1} only {f:.1f} N" for i, f in enumerate(forces) if f < args['min_ball_force']]
+    why    += [f"{side:.1f} N across the push, something else touches"] if side > args['max_side_force'] else []
+    press.update(T=T, centers=transform_points(T, balls), wrench=wrench, forces=forces, side=side, moving=moving,
+                 flat=not why, why=why)
     robot.move_l(matrix_to_pose(press['start']), args['lin_speed'], args['lin_acc'])
     return True
 
 
-def run(robot, sim_env, planes : dict, center : np.ndarray, args):
+def run(robot, arm : dict, sim_env, planes : dict, center : np.ndarray, args):
     # press edge by edge in ROUTINE order: each press is planned from the latest face estimates and its measured
     # plane replaces the camera's guess of that face, then back to where the arm started; stops at the first
     # miss or failed move and returns the presses that touched
@@ -294,7 +387,7 @@ def run(robot, sim_env, planes : dict, center : np.ndarray, args):
         for edge, plate in ROUTINE:
             press   = plan_press(planes, {p['face'] for p in done}, center, edge, plate, args)
             path    = route(prev, press, planes, center, args)
-            check_reach(robot, path + [press['start'], press['limit']], robot.get_q(), args, prev is None)
+            check_reach(robot, arm, path + [press['start'], press['limit']], robot.get_q(), args, prev is None)
             if prev is None:
                 robot.move_j(robot.ik(matrix_to_pose(path[0]), q_home), args['move_speed'], args['move_acc'])
                 path = path[1:]
@@ -307,9 +400,11 @@ def run(robot, sim_env, planes : dict, center : np.ndarray, args):
             prev = press
             planes.update({face: (plane['point'], plane['normal']) for face, plane in fit_faces(done).items()})
             print(f"{edge:5s} edge  {plate:5s} plate on the {press['face']:5s} face: "
-                  f"ball forces {np.round(press['forces'], 1)} N, still within {press['moving'] * 1000:.3f} mm, "
-                  f"{'all three balls on the wood' if press['flat'] else 'NOT SURE all three balls touched'}")
-        robot.move_l(matrix_to_pose(press['retract']), args['lin_speed'], args['lin_acc'])
+                  f"ball forces {np.round(press['forces'], 1)} N, {press['side']:.1f} N across, still within "
+                  f"{press['moving'] * 1000:.1f} mm: "
+                  f"{'seated, all three balls pushing' if press['flat'] else 'NOT SEATED, ' + ', '.join(press['why'])}")
+        for T in route_home(press, planes, center, args):
+            robot.move_l(matrix_to_pose(T), args['lin_speed'], args['lin_acc'])
         robot.move_j(q_home, args['move_speed'], args['move_acc'])
     except RuntimeError as error:
         print(f"{error}, stopping here: check the arm and the pendant")
@@ -412,7 +507,7 @@ def plot(planes : dict, cam_points : np.ndarray, results : dict, half : dict, ar
 
     # every number, and whether every press lay flat
     lines = [f"{k:40s} {v:8.2f}" for k, v in results.items()]
-    lines += ['', 'all 3 balls on the wood (plate still, each ball pushing):']
+    lines += ['', 'seated (each ball pushing, nothing else touching):']
     lines += [f"  {face:6s} {'yes     ' if p['flat'] else 'NOT SURE'}  weakest ball {p['min_force']:5.1f} N"
               for face, p in planes.items()]
     text    = fig.add_subplot(grid[1])
@@ -422,21 +517,27 @@ def plot(planes : dict, cam_points : np.ndarray, results : dict, half : dict, ar
     return fig
 
 
+# what is kept of every press
+PRESS_KEYS = ('edge', 'plate', 'face', 'direction', 'T', 'centers', 'wrench', 'forces', 'side', 'moving', 'flat')
+
+
 def save(path : Path, cam_points : np.ndarray, T_beam : np.ndarray, half : dict, presses : list,
          T_capture : np.ndarray, cam_fixed):
     # everything needed to fit and plot again without the robot, plus where the camera was and its corrected
     # mounting when the first edge was taught (nan otherwise)
     np.savez(path, cam_points=cam_points, T_beam=T_beam, half=[half['top'], half['left']], T_capture=T_capture,
              cam_fixed=np.full(6, np.nan) if cam_fixed is None else cam_fixed,
-             **{key: np.array([press[key] for press in presses])
-                for key in ('edge', 'plate', 'face', 'direction', 'T', 'centers', 'forces', 'moving', 'flat')})
+             **{key: np.array([press[key] for press in presses]) for key in PRESS_KEYS})
 
 
 def load(path : Path):
-    # a run saved by save()
+    # a run saved by save() (older runs lack the wrench and the force across the push); the ball centers again
+    # from the saved flange poses with the tool as it is now known (PLATES)
     d       = np.load(path)
-    keys    = ('edge', 'plate', 'face', 'direction', 'T', 'centers', 'forces', 'moving', 'flat')
+    keys    = [key for key in PRESS_KEYS if key in d]
     presses = [dict(zip(keys, values)) for values in zip(*(d[key] for key in keys))]
+    for press in presses:
+        press['centers'] = transform_points(press['T'], PLATES[str(press['plate'])]['balls'])
     return d['cam_points'], d['T_beam'], {'top': d['half'][0], 'right': d['half'][1], 'left': d['half'][1]}, presses
 
 
@@ -456,6 +557,9 @@ def report(presses : list, cam_points : np.ndarray, half : dict, path : Path, ar
 
 
 def main(args):
+    # the real tool, from the drawing and the measured plate tilts
+    tilt_plates(args['plate_tilts'])
+
     # fit and plot a saved run again
     if args['replot']:
         cam_points, _, half, presses = load(Path(args['replot']))
@@ -467,6 +571,7 @@ def main(args):
     sim_env = vision.sim_env if args['sim'] else None
     robot   = URRobot(args)
     robot.set_tcp([0, 0, 0, 0, 0, 0])   # every pose below is the flange's
+    arm     = load_arm(args)            # the arm's shapes, to keep it off the table
 
     try:
         # the camera's end face sets the beam frame and the face size, which place the presses
@@ -489,10 +594,10 @@ def main(args):
 
         # check the whole routine as planned, then press, correcting the plan as faces are touched
         try:
-            check_plan(robot, planes, center, args)
+            check_plan(robot, arm, planes, center, args)
         except RuntimeError as error:
             raise SystemExit(f"not reachable as planned, {error}")
-        presses = run(robot, sim_env, planes, center, args)
+        presses = run(robot, arm, sim_env, planes, center, args)
     finally:
         robot.close()
         vision.close()
@@ -515,7 +620,8 @@ if __name__ == "__main__":
     args['robot_ip']        = "127.0.0.1" if args['sim'] else "192.168.1.100"
 
     # camera color optical frame in the flange frame [x, y, z, rx, ry, rz], same as visual_servo.py
-    args['cam_in_flange']   = [0.0325, 0.0911, 0.0290, 0.0, 2.2214, 2.2214]
+    # args['cam_in_flange']   = [0.0325, 0.0911, 0.0290, 0.0, 2.2214, 2.2214]
+    args['cam_in_flange']   = [0.0314, 0.0891, 0.0293, -0.0328, -2.1095, -2.3137]
     args['width']           = 640
     args['height']          = 480
     args['fps']             = 30
@@ -523,9 +629,10 @@ if __name__ == "__main__":
     # simulated scene, same as visual_servo.py
     args['xml_file']        = 'ur10e.xml'
     args['sim_fovy']        = 43.1
-    args['beam_pose']       = [-0.0741, 1.9744, 0.30, 0, 0, 0.2618]
-    args['beam_size']       = [0.19, 1.5, 0.35]
+    args['beam_pose']       = [-0.012, 1.562, 0.161, 0, 0, 0]
+    args['beam_size']       = [0.224, 1.5, 0.263]
     args['beam_rgba']       = [0.8, 0.5, 0.2, 1]
+    args['table_rgba']      = [0.75, 0.52, 0.28, 1]     # the real table is wood too
     args['render']          = True
     args['cam_lookat']      = [0.1, 0.9, 0.5]
     args['cam_azi']         = 150
@@ -537,7 +644,12 @@ if __name__ == "__main__":
     args['hsv_high']        = np.array([25, 255, 255])
     args['depth_min']       = 0.3
     args['depth_max']       = 1.5
-    args['max_faces']       = 1
+    args['max_faces']       = 3
+    args['max_face_angle']  = np.radians(45)
+    args['smooth_px']       = 9
+    args['normal_px']       = 4
+    args['normal_tol']      = np.radians(30)
+    args['open_px']         = 5
     args['plane_tol']       = 0.01
     args['ransac_iters']    = 200
     args['ransac_points']   = 2000
@@ -545,25 +657,43 @@ if __name__ == "__main__":
     args['n_frames']        = 10
 
     # presses (m): the plate starts standoff before the face's estimate and searches up to max_travel for the
-    # first contact. A hand-eye error of a few degrees moves the camera's face ~5 cm sideways per 5.7 deg at
-    # 0.5 m (its depth stays within ~1.5 cm), so the search covers +-8 cm. The other plate stays clear of its
-    # face, less once that face is measured (the first top plate balls land 40 mm - clear behind the end face edge)
-    args['standoff']        = 0.08
-    args['max_travel']      = 0.16
+    # first contact. With the hand-eye calibrated camera the faces are within ~1 cm (the end face 7.6 mm off, the
+    # sides a few mm), so the search covers +-4 cm; longer, the top face press's far end takes the front plate
+    # (127 mm below the top plate) near the table when the beam lies on it. The other plate's nearest ball stays
+    # clear of its face, clear_measured once that face is touched: on a side face press the top plate's near balls
+    # then land ~27 mm behind the end face edge (31 mm - clear_measured with plate_tilts), and the top plate holds
+    # its turn about the edge within 0.01 rad (press_limits), which moves the front plate's far ball <= 1.3 mm
+    args['standoff']        = 0.04
+    args['max_travel']      = 0.08
     args['clear']           = 0.02
-    args['clear_measured']  = 0.015
-    args['teach_first']     = not args['sim']   # seat the tool on the top edge by hand first (camera not calibrated)
+    args['clear_measured']  = 0.004
+    # seat the tool on the top edge by hand first: not needed with the hand-eye calibrated cam_in_flange (2026-10-06,
+    # yesterday's camera end face then sits 0.19 deg / 7.6 mm from the touched one), True with an uncalibrated camera
+    args['teach_first']     = False
     args['retract']         = 0.20      # back from the end face when going from edge to edge
 
     # force mode after the first contact: push (N) for press_time (s), tilting freely until all balls touch;
     # limits: [x, y] allowed deviation (m), [z] speed (m/s), [rx, ry] speed (rad/s), [rz] deviation (rad).
-    # damping 0..1 (ur_rtde default 0.005), tune on the arm
+    # damping 0..1 (ur_rtde default 0.005), tune on the arm. The wrench of the last second says whether the plate
+    # sat: every ball pushing at least min_ball_force (from the moments about the balls' center) and less than
+    # max_side_force across the push (sensor precision ~3.5 N; on 2026-10-06 seated plates read 3-11 N per ball)
+    # Free axes of the press frame (plate_tcp: z the push, x along the near balls' line, y across it): the front
+    # plate turns both ways; the top plate only about y (the tool axis), since turning about the edge swings the
+    # front plate (127 mm below) onto the end face; its tilt about the edge is planned in (plate_tilts)
     args['press_force']     = 20.0
-    args['press_time']      = 3.0
+    args['press_time']      = 4.0
     args['press_damping']   = 0.1
-    args['press_limits']    = [0.005, 0.005, 0.01, 0.2, 0.2, 0.05]
-    args['still_tol']       = 0.0002    # m, the plate moved less than this over the second half of the press
-    args['min_ball_force']  = 2.0       # N, every ball pushing at least this much (sensor precision ~3.5 N)
+    args['press_free']      = {'front': [0, 0, 1, 1, 1, 0], 'top': [0, 0, 1, 0, 1, 0]}
+    args['press_limits']    = {'front': [0.005, 0.005, 0.01, 0.2, 0.2, 0.05], 'top': [0.005, 0.005, 0.01, 0.01, 0.2, 0.05]}
+
+    # the real plates are the drawing's turned this much about the edge (flange x) through their ball tips (rad):
+    # fitted on the 2026-10-06 13:55 run (results/beam_20261006_135501.npz) for a square beam with a flat end
+    # face; the three end face presses then agree to 0.43 mm rms (1.08 with the drawing) and left/right are
+    # parallel within 0.2 deg (6.7). Where each plate turns about is not known, so face positions may be a few mm
+    # off: check the touch width against calipers. The simulated tool is the drawing
+    args['plate_tilts']     = {'front': 0.0, 'top': 0.0} if args['sim'] else {'front': np.radians(-1.29), 'top': np.radians(3.26)}
+    args['min_ball_force']  = 2.0
+    args['max_side_force']  = 5.0
 
     # speeds: touching (m/s, m/s^2), straight line moves, joint moves (rad/s, rad/s^2)
     args['touch_speed']     = 0.01
@@ -573,10 +703,17 @@ if __name__ == "__main__":
     args['move_speed']      = 0.5
     args['move_acc']        = 0.5
 
-    # no pose may come closer to a singularity than this (see visual_servo.py), and no joint may turn more than
-    # max_joint_turn between two poses of the route
+    # no pose may come closer to a singularity than this (see visual_servo.py), no part of the arm or tool closer
+    # to the table than table_margin (table top at table_z in UR's base frame, 0 = the base sits on it), and no
+    # joint may turn more than max_joint_turn between two poses of the route. Moves are checked every step_len (m)
+    # and step_angle (rad) along the way. Start from visual_servo.py's home wrist (above the tool): with the wrist
+    # below, it hangs 18 cm under the tool at the beam's sides
     args['run_margins']     = {'shoulder': 0.05, 'elbow': 0.10, 'wrist': 0.10}
+    args['table_z']         = 0.0
+    args['table_margin']    = 0.05
     args['max_joint_turn']  = np.radians(135)
+    args['step_len']        = 0.01
+    args['step_angle']      = np.radians(2)
 
     # output, or set replot to a saved results/beam_*.npz to fit and plot it again without the robot
     args['out_dir']         = 'results'
