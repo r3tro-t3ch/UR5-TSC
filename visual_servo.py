@@ -36,7 +36,7 @@ from scipy.spatial.transform import Rotation as R
 from env.ur_robot import URRobot
 from env.vision import Vision
 from test_vision import get_points, detect_faces, draw_faces
-from utils.utils import pose_to_matrix
+from utils.utils import pose_to_matrix, singularity_margins
 
 
 def find_wood_face(color : np.ndarray, depth : np.ndarray, intrinsics, args, rng):
@@ -79,7 +79,18 @@ def servo_velocity(T_target : np.ndarray, T_base_cam : np.ndarray, args):
     return np.concatenate((v, w)), e_pos, e_rot, done
 
 
+def near_singularity(q, limits):
+    # the singularities closer than their limits, as readable text (empty when the arm is clear of all of them)
+    margins = singularity_margins(q)
+    return [f"{k} {margins[k]:.3f} < {limits[k]}" for k in limits if margins[k] < limits[k]]
+
+
 def main(args):
+    # refuse a home pose next to a singularity before anything starts: speedL would fail there
+    near = near_singularity(args['home_q'], args['start_margins'])
+    if near:
+        raise SystemExit(f"home_q is too close to a singularity ({', '.join(near)}), move the arm and update it")
+
     # camera first: the first real frame and the window take over a second, which would trip the robot's watchdog
     vision  = Vision(args)
     cv2.imshow("visual servo", vision.get_frames()[0])
@@ -89,13 +100,19 @@ def main(args):
     # robot: make the camera the TCP, so TCP poses and speedL commands are the camera's
     robot   = URRobot(args)
     robot.set_tcp(args['cam_in_flange'])
-    if args['look_q'] is not None:
-        robot.move_j(args['look_q'], args['move_speed'], args['move_acc'])  # start where the camera sees the beam
+    robot.move_j(args['home_q'], args['move_speed'], args['move_acc'])     # start from home
     robot.start_watchdog(args['watchdog_hz'])     # robot stops if this loop stalls, so it is enabled last
 
     try:
         while True:
             robot.kick_watchdog()
+
+            # stop before the arm reaches a singularity, where speedL finds no IK solution
+            near = near_singularity(robot.get_q(), args['run_margins'])
+            if near:
+                print(f"stopped, too close to a singularity ({', '.join(near)})")
+                break
+
             color, depth    = vision.get_frames()
             face            = find_wood_face(color, depth, vision.intrinsics, args, rng)
 
@@ -131,21 +148,29 @@ if __name__ == "__main__":
     args = {}
 
     # real arm + RealSense, or URSim (docker, ports on localhost) + MuJoCo camera
-    args['sim']             = True
+    args['sim']             = False
 
     # robot
     args['robot_ip']        = "127.0.0.1" if args['sim'] else "192.168.1.100"
     args['dry_run']         = False      # compute and show the commands but do not move the arm
     args['watchdog_hz']     = 5         # minimum loop rate before the robot stops itself
 
-    # start pose (rad): URSim starts elsewhere, so move to where the camera sees the beam; real arm starts where it is
-    args['look_q']          = [-2.0422, -1.8018, 2.3694, -0.5676, 1.0994, 3.1416] if args['sim'] else None
+    # home (rad): camera 25 cm in front of a pose read from the real arm on 2026-10-05, 18.5 cm clear of the
+    # shoulder singularity; change it to start somewhere else (the guard below checks it).
+    # both the real arm and URSim moveJ here before servoing
+    args['home_q']          = [1.5823, -0.9454, -2.4521, -1.3096, 1.5729, 3.1231]
+
+    # singularity guard (see utils.singularity_margins): the arm does not start when home_q is closer than
+    # start_margins and stops servoing below run_margins. shoulder in m, elbow and wrist as |sin| (0.17 ~ 10 deg)
+    args['start_margins']   = {'shoulder': 0.08, 'elbow': 0.17, 'wrist': 0.17}
+    args['run_margins']     = {'shoulder': 0.05, 'elbow': 0.10, 'wrist': 0.10}
     args['move_speed']      = 0.5       # rad/s
     args['move_acc']        = 0.5       # rad/s^2
 
     # camera color optical frame in the flange frame [x, y, z, rx, ry, rz] (m, rotation vector)
-    # PLACEHOLDER: measure it from the mount (or hand-eye calibrate) before turning dry_run off
-    args['cam_in_flange']   = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    # from edge_finder.stl: D435 on the top pad, RGB lens 4.2 mm behind the front glass, looking along the
+    # flange's +y with image down along the tool axis. CAD only, hand-eye calibrate before turning dry_run off
+    args['cam_in_flange']   = [0.0325, 0.0911, 0.0290, 0.0, 2.2214, 2.2214]
 
     # camera
     args['width']           = 640
@@ -180,7 +205,7 @@ if __name__ == "__main__":
     args['min_pixels']      = 3000
 
     # servoing
-    args['view_distance']   = 0.5       # camera distance from the face center (m)
+    args['view_distance']   = 0.4       # camera distance from the face center (m)
     args['gain']            = 0.2       # 1/s, the error shrinks by ~63 % every 5 s once below the speed caps
     args['max_speed']       = 0.02      # m/s
     args['max_ang_speed']   = 0.05      # rad/s (~3 deg/s)

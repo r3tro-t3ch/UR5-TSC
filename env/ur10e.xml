@@ -68,6 +68,9 @@
     <mesh file="wrist2_1.obj"/>
     <mesh file="wrist2_2.obj"/>
     <mesh file="wrist3.obj"/>
+    <!-- edge finder tool with the D435 on top, edge_finder.stl (mm) decimated from 310k to 20k faces
+         (MuJoCo reads at most 200k, surface within 0.32 mm of the original) -->
+    <mesh file="edge_finder_sim.stl" scale="0.001 0.001 0.001"/>
   </asset>
 
   <worldbody>
@@ -128,6 +131,31 @@
                     <geom material="linkgray" mesh="wrist3" class="visual"/>
                     <geom class="eef_collision" pos="0 0.097 0" quat="1 1 0 0" size="0.046 0.02"/>
                     <site name="attachment_site" pos="0 0.1 0" quat="-1 1 0 0"/>
+                    <!-- edge finder, a fixed body in UR's flange frame (attachment_site + 16.7 mm along z) -->
+                    <body name="edge_finder" pos="0 0.1167 0" quat="-1 1 0 0">
+                      <!-- payload estimated on the hardware by the UR arm (CoG and inertia in the flange frame) -->
+                      <inertial mass="0.88" pos="0.003 0.040 0.040" diaginertia="0.001244 0.001244 0.001244"/>
+                      <!-- in the STL the tool axis is +y, the flange sits in a 6 mm recess centered at
+                           (0, -1955.71, -64.21) mm and the dowel pin hole is at -z, which is the flange's -y
+                           (pin hole seen in wrist3.obj) -->
+                      <geom name="edge_finder" mesh="edge_finder_sim" material="jointgray" class="visual"
+                        pos="0 0.06421 1.95571" quat="0 0 0.70711 0.70711"/>
+                      <!-- collision boxes fitted to the CAD: mounting plate (tapering to the tip), shelf and
+                           block on the camera side, D435 -->
+                      <geom name="ef_plate" class="collision" type="box" pos="0 0.025 0.004" size="0.060 0.045 0.010"/>
+                      <geom name="ef_plate_mid" class="collision" type="box" pos="0 -0.040 0.004" size="0.058 0.020 0.010"/>
+                      <geom name="ef_plate_tip" class="collision" type="box" pos="0 -0.081 0.004" size="0.038 0.021 0.010"/>
+                      <geom name="ef_shelf" class="collision" type="box" pos="0 0.05725 0.0873" size="0.060 0.01475 0.0733"/>
+                      <geom name="ef_block" class="collision" type="box" pos="0 0.08545 0.1053" size="0.060 0.01345 0.0553"/>
+                      <geom name="ef_camera" class="collision" type="box" pos="0 0.08265 0.029" size="0.045 0.01265 0.0125"/>
+                      <!-- the six r = 10 mm probe balls that touch the beam -->
+                      <geom name="ef_ball_1" class="collision" type="sphere" pos="0.050 -0.0058 0.014" size="0.010"/>
+                      <geom name="ef_ball_2" class="collision" type="sphere" pos="-0.050 -0.0058 0.014" size="0.010"/>
+                      <geom name="ef_ball_3" class="collision" type="sphere" pos="0 -0.0924 0.014" size="0.010"/>
+                      <geom name="ef_ball_4" class="collision" type="sphere" pos="0.050 0.0442 0.064" size="0.010"/>
+                      <geom name="ef_ball_5" class="collision" type="sphere" pos="-0.050 0.0442 0.064" size="0.010"/>
+                      <geom name="ef_ball_6" class="collision" type="sphere" pos="0 0.0442 0.1506" size="0.010"/>
+                    </body>
                   </body>
                 </body>
               </body>

@@ -27,7 +27,8 @@
 # Provide quaternion-to-Euler conversion for scalar-first input quaternions
 # and construction of three-dimensional skew-symmetric matrices used by
 # orientation tracking calculations. Convert UR poses (position and rotation
-# vector) to 4x4 transforms.
+# vector) to 4x4 transforms and back. UR forward kinematics (DH) and distances
+# to the arm's three singularities (shoulder, elbow, wrist).
 
 import numpy as np
 from scipy.spatial.transform import Rotation as R
@@ -56,6 +57,42 @@ def pose_to_matrix(pose):
     T[:3, :3]   = R.from_rotvec(pose[3:]).as_matrix()
     T[:3, 3]    = pose[:3]
     return T
+
+def matrix_to_pose(T):
+    # 4x4 transform -> UR pose [x, y, z, rx, ry, rz] (rotation vector)
+    return np.concatenate((T[:3, 3], R.from_matrix(T[:3, :3]).as_rotvec()))
+
+def transform_points(T, points):
+    # Nx3 points through a 4x4 transform
+    return points @ T[:3, :3].T + T[:3, 3]
+
+# UR10e DH parameters (UR's published values): d (m), a (m), alpha (rad) per joint
+UR10E_DH = {'d'     : [0.1807, 0, 0, 0.17415, 0.11985, 0.11655],
+            'a'     : [0, -0.6127, -0.57155, 0, 0, 0],
+            'alpha' : [np.pi / 2, 0, 0, np.pi / 2, -np.pi / 2, 0]}
+
+def ur_forward_kinematics(q, dh=UR10E_DH):
+    # joint angles (rad) -> 4x4 flange pose in UR's base frame (same as the robot's TCP pose with no TCP offset)
+    T = np.eye(4)
+    for qi, d, a, al in zip(q, dh['d'], dh['a'], dh['alpha']):
+        ct, st, ca, sa = np.cos(qi), np.sin(qi), np.cos(al), np.sin(al)
+        T = T @ np.array([[ct, -st * ca,  st * sa, a * ct],
+                          [st,  ct * ca, -ct * sa, a * st],
+                          [0,   sa,       ca,      d],
+                          [0,   0,        0,       1]])
+    return T
+
+def singularity_margins(q, dh=UR10E_DH):
+    # how far the arm is from each singularity, where IK (and so speedL) breaks down:
+    # shoulder: wrist point (frame 5 origin) distance outside the cylinder of radius d4 around the base axis (m),
+    #           inside it there is no IK solution at all
+    # elbow:    |sin(q3)|, 0 with the arm stretched out or folded back
+    # wrist:    |sin(q5)|, 0 with the wrist 1 and wrist 3 axes lined up
+    T   = ur_forward_kinematics(q, dh)
+    p05 = T[:3, 3] - dh['d'][5] * T[:3, 2]
+    return {'shoulder'  : np.hypot(p05[0], p05[1]) - dh['d'][3],
+            'elbow'     : abs(np.sin(q[2])),
+            'wrist'     : abs(np.sin(q[4]))}
 
 def get_quat_error(q, q_d):
         a = np.array(q_d[1:4])

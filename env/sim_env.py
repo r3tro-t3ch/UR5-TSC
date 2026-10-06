@@ -27,7 +27,9 @@
 # Couple URSim and MuJoCo for testing without hardware. URSim runs the real UR
 # controller; MuJoCo only mirrors its joint angles (no physics) and renders
 # color and depth from a camera on the wrist looking at a wood-colored beam.
-# Optionally show the mirrored arm in a mujoco-python-viewer window.
+# URSim feels no contact, so the beam box also tells how far a ball can move
+# before it touches. Optionally show the mirrored arm in a mujoco-python-viewer
+# window.
 
 import mujoco
 import multiprocessing
@@ -106,6 +108,10 @@ class SimEnv:
         f               = args['height'] / 2 / np.tan(np.radians(args['sim_fovy']) / 2)
         self.intrinsics = SimpleNamespace(fx=f, fy=f, ppx=(args['width'] - 1) / 2, ppy=(args['height'] - 1) / 2)
 
+        # the beam box in UR's base frame and its half sizes, for contact
+        self.T_beam     = pose_to_matrix(args['beam_pose'])
+        self.beam_half  = np.array(args['beam_size']) / 2
+
         # optional viewer of the whole scene, a fresh (spawned) process that ends with this program
         if args['render']:
             multiprocessing.get_context('spawn').Process(target=run_viewer, args=(args,), daemon=True).start()
@@ -123,6 +129,25 @@ class SimEnv:
         depth = self.renderer.render()
         self.renderer.disable_depth_rendering()
         return color, depth
+
+    def first_contact(self, centers, radius : float, direction):
+        # the balls (Nx3 centers, UR base frame) moving along direction: the travel (m) until the first one
+        # touches a face of the beam box, and that face's plane (a point on it, outward normal), None if all miss
+        c       = (centers - self.T_beam[:3, 3]) @ self.T_beam[:3, :3]      # centers in the box frame
+        d       = self.T_beam[:3, :3].T @ direction
+        best    = None
+        for axis in range(3):
+            for sign in (1, -1):
+                if sign * d[axis] >= 0:
+                    continue    # moving away from this face
+                # travel until each ball reaches the face plane, kept only where it lands inside the face
+                s       = (sign * c[:, axis] - self.beam_half[axis] - radius) / (-sign * d[axis])
+                hit     = c + s[:, None] * d
+                inside  = np.all(np.delete(np.abs(hit) <= self.beam_half, axis, axis=1), axis=1) & (s >= 0)
+                if inside.any() and (best is None or s[inside].min() < best[0]):
+                    normal  = sign * self.T_beam[:3, axis]
+                    best    = (s[inside].min(), self.T_beam[:3, 3] + self.beam_half[axis] * normal, normal)
+        return best
 
     def close(self):
         self.renderer.close()

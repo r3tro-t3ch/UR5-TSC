@@ -25,9 +25,11 @@
 #
 # Overview:
 # All ur_rtde calls in one place: sensor readings (joint angles, TCP pose and
-# wrench) and motion commands (TCP, moveJ, speedL, stop, watchdog). The same
+# wrench), the controller's inverse kinematics and motion commands (TCP, moveJ,
+# moveL, move until contact, force mode press, freedrive, speedL, stop, watchdog). The same
 # RTDE connection drives the real UR arm and URSim, only the IP differs.
 
+import time
 import numpy as np
 from rtde_control import RTDEControlInterface
 from rtde_receive import RTDEReceiveInterface
@@ -54,6 +56,12 @@ class URRobot:
         # wrench at the TCP [Fx, Fy, Fz, Tx, Ty, Tz] (N, Nm), always ~zero in URSim
         return np.array(self.receive.getActualTCPForce())
 
+    def ik(self, pose, q_near):
+        # joint angles (rad) for a TCP pose, the solution closest to q_near, or None when it is out of reach
+        if not self.control.getInverseKinematicsHasSolution(list(pose), list(q_near)):
+            return None
+        return np.array(self.control.getInverseKinematics(list(pose), list(q_near)))
+
     # commands
 
     def set_tcp(self, pose):
@@ -61,8 +69,62 @@ class URRobot:
         self.control.setTcp(list(pose))
 
     def move_j(self, q, speed : float, acc : float):
-        # blocking joint space move (rad/s, rad/s^2)
-        self.control.moveJ(list(q), speed, acc)
+        # blocking joint space move (rad/s, rad/s^2); ur_rtde only returns False when it fails, so raise
+        if not self.control.moveJ(list(q), speed, acc):
+            raise RuntimeError(f"moveJ to {np.round(q, 3)} failed")
+
+    def move_l(self, pose, speed : float, acc : float):
+        # blocking straight line TCP move to pose [x, y, z, rx, ry, rz] (m/s, m/s^2), raises when it fails
+        if not self.control.moveL(list(pose), speed, acc):
+            raise RuntimeError(f"moveL to {np.round(pose, 3)} failed")
+
+    def move_until_contact(self, pose, speed : float, acc : float):
+        # straight line TCP move towards pose that stops at the first contact (the robot's own contact
+        # detection, in the direction of motion), so pose limits the travel when nothing is touched;
+        # returns True on contact. Progress < 0 and changed means the asynchronous move has ended
+        direction   = np.concatenate((np.asarray(pose[:3]) - self.get_tcp_pose()[:3], np.zeros(3)))
+        last        = self.control.getAsyncOperationProgress()
+        self.control.startContactDetection(list(direction))
+        self.control.moveL(list(pose), speed, acc, True)
+        while not self.control.readContactDetection():
+            progress = self.control.getAsyncOperationProgress()
+            if progress < 0 and progress != last:
+                break
+            time.sleep(0.002)
+        contact = self.control.stopContactDetection()
+        self.control.stopL(acc)
+        return contact
+
+    def free_drive(self, on : bool):
+        # freedrive: the arm can be moved by hand (like the pendant's freedrive button) until switched off
+        if on:
+            self.control.teachMode()
+        else:
+            self.control.endTeachMode()
+
+    def zero_ft(self):
+        # zero the wrist force/torque sensor, with the arm at rest and touching nothing
+        self.control.zeroFtSensor()
+
+    def press(self, force : float, duration : float, damping : float, limits):
+        # force mode about the current TCP for duration (s): push force (N) along the TCP z axis and stay
+        # compliant in rotation about its x and y axes with zero torque, stiff in the rest (limits: speeds
+        # on the compliant axes, allowed deviations on the others); returns the TCP poses and wrenches
+        # of the second half, when the arm should be at rest
+        frame   = list(self.get_tcp_pose())
+        poses   = []
+        wrench  = []
+        start   = time.time()
+        self.control.forceModeSetDamping(damping)
+        while time.time() - start < duration:
+            t = self.control.initPeriod()
+            self.control.forceMode(frame, [0, 0, 1, 1, 1, 0], [0, 0, force, 0, 0, 0], 2, list(limits))
+            if time.time() - start > duration / 2:
+                poses.append(self.get_tcp_pose())
+                wrench.append(self.get_tcp_force())
+            self.control.waitPeriod(t)
+        self.control.forceModeStop()
+        return np.array(poses), np.array(wrench)
 
     def speed_l(self, xd, acc : float, time : float):
         # TCP velocity [vx, vy, vz, wx, wy, wz] in the base frame (m/s, rad/s), returns at once;
