@@ -115,13 +115,17 @@ def tilt_plates(tilts : dict):
     # center of its ball tips, where it was measured to sit (plate_tilts)
     for plate, geometry in CAD.items():
         turn    = R.from_rotvec([tilts[plate], 0, 0]).as_matrix()
-        pivot   = (geometry['balls'] + BALL_R * geometry['normal']).mean(axis=0)
+        pivot   = tips_center(geometry)
         PLATES[plate] = {'balls': (geometry['balls'] - pivot) @ turn.T + pivot, 'normal': turn @ geometry['normal']}
 
 
-def turned(T : np.ndarray, plate : str, angle : float):
-    # flange pose T turned by angle (rad) about its x axis (the edge) through the center of a plate's ball tips
-    pivot           = (CAD[plate]['balls'] + BALL_R * CAD[plate]['normal']).mean(axis=0)
+def tips_center(geometry : dict, balls=slice(None)):
+    # center of a plate's ball tips (all, or the ones picked by balls) in the flange frame
+    return (geometry['balls'][balls] + BALL_R * geometry['normal']).mean(axis=0)
+
+
+def turned(T : np.ndarray, pivot : np.ndarray, angle : float):
+    # flange pose T turned by angle (rad) about its x axis (the edge) through pivot (flange frame)
     turn            = np.eye(4)
     turn[:3, :3]    = R.from_rotvec([angle, 0, 0]).as_matrix()
     turn[:3, 3]     = pivot - turn[:3, :3] @ pivot
@@ -189,6 +193,14 @@ def plate_tcp(plate : str):
     return T
 
 
+def near_tcp(plate : str):
+    # TCP midway between a plate's two near ball tips, axes as plate_tcp (x along their line, y towards the far
+    # ball): turning about x pivots the plate on its near balls
+    T           = plate_tcp(plate)
+    T[:3, 3]    = tips_center(PLATES[plate], slice(0, 2))
+    return T
+
+
 def retracted(T_edge : np.ndarray, args):
     # the edge pose backed off from the end face, for going from edge to edge
     T           = T_edge.copy()
@@ -200,12 +212,14 @@ def plan_press(planes : dict, measured : set, center : np.ndarray, edge : str, p
     # one press of a plate at an edge, from the current face estimates: start pose (backed off from the face,
     # clear of the other face, less so once that face is measured), push direction, farthest travel, retract.
     # The drawing's square L sits on the edge, then the tool turns back by the plate's tilt about its ball tips,
-    # so the real plate lies parallel to its face, and moves along that face until the other plate's nearest
-    # ball is on the other face (before backing off by clear)
+    # so the real plate lies parallel to its face, then on further, its far ball raised by approach_pitch about
+    # its near balls so they touch first, and moves along that face until the other plate's nearest ball is on the
+    # other face (before backing off by clear)
     T_edge          = edge_pose(planes, center, edge)
     other           = 'top' if plate == 'front' else 'front'
     other_face      = edge if other == 'top' else 'front'
-    T               = turned(T_edge, plate, -args['plate_tilts'][plate])
+    T               = turned(T_edge, tips_center(CAD[plate]), -args['plate_tilts'][plate])
+    T               = turned(T, tips_center(PLATES[plate], slice(0, 2)), -far_down(plate) * args['approach_pitch'])
     p, n            = planes[other_face]
     tips            = transform_points(T, PLATES[other]['balls'] + BALL_R * PLATES[other]['normal'])
     T[:3, 3]       -= ((tips - p) @ n).min() * n
@@ -315,46 +329,71 @@ def aligned(T : np.ndarray, plate : str, normal : np.ndarray):
     return T_new
 
 
-def ball_forces(T : np.ndarray, wrench : np.ndarray, plate : str):
-    # each ball's push on the wood (N) from the wrist wrench at the plate TCP (flange pose T): the force along
-    # the push and the torques about the two in-plane axes give three equations for the three balls
-    tcp     = T @ plate_tcp(plate)
-    tips    = (PLATES[plate]['balls'] + BALL_R * PLATES[plate]['normal'] - plate_tcp(plate)[:3, 3]) @ T[:3, :3].T
+def ball_forces(T : np.ndarray, wrench : np.ndarray, plate : str, tcp_in_flange : np.ndarray):
+    # each ball's push on the wood (N) from the wrist wrench at the TCP it was read at (tcp_in_flange, z along the
+    # push; flange pose T): the force along the push and the torques about the two in-plane axes give three
+    # equations for the three balls
+    tcp     = T @ tcp_in_flange
+    tips    = (PLATES[plate]['balls'] + BALL_R * PLATES[plate]['normal'] - tcp_in_flange[:3, 3]) @ T[:3, :3].T
     lever   = np.cross(tips, tcp[:3, 2])                    # torque about the TCP per newton, one row per ball
     M       = np.vstack((np.ones(3), lever @ tcp[:3, 0], lever @ tcp[:3, 1]))
     f       = np.linalg.solve(M, [wrench[:3] @ tcp[:3, 2], wrench[3:] @ tcp[:3, 0], wrench[3:] @ tcp[:3, 1]])
     return f if f.sum() > 0 else -f     # the sensor's sign convention does not matter, the balls push
 
 
+def far_down(plate : str):
+    # which way about the near balls' line (near_tcp x) lowers the plate's far ball onto its face: +1 for the top
+    # plate (far ball on near_tcp +y), -1 for the front plate (on -y)
+    tcp = near_tcp(plate)
+    return np.sign((tips_center(PLATES[plate], slice(2, 3)) - tcp[:3, 3]) @ tcp[:3, 1])
+
+
 def press_face(robot, sim_env, press : dict, args):
-    # move in until the first ball touches, then press flat so all three balls rest on the face; records the
-    # flange pose, the three ball centers, the wrench at the balls' center, each ball's force, the force across
-    # the push, how much the plate still moved, and whether it sat: every ball pushing at least min_ball_force
-    # (no moment about the balls' center that one or two balls would make) and less than max_side_force across
-    # the push (nothing else touching, like the front plate on the end face during a top plate press);
-    # False on a miss
+    # move in (the plate tilted, its far ball raised) until the first near ball touches, roll until both near balls
+    # rest, turn on them until the far ball touches, then push with every turn held; records the flange pose, the
+    # three ball centers, the wrench at the near balls, each ball's force from it, the force across the push, how
+    # far the plate turned on its near balls, whether the far ball was found, how much the plate still moved, and
+    # whether it sat: far ball found and less than max_side_force across the push (nothing else touching, like the
+    # front plate on the end face during a top plate press); False on a miss
     balls = PLATES[press['plate']]['balls']
     robot.move_l(matrix_to_pose(press['start']), args['lin_speed'], args['lin_acc'])
     if sim_env is None:
         robot.zero_ft()
         if not robot.move_until_contact(matrix_to_pose(press['limit']), args['touch_speed'], args['touch_acc']):
             return False
-        # press about the balls' center, then the flange is the TCP again
-        tcp = plate_tcp(press['plate'])
+        # roll about the line to the far ball with no moment, its pitch held, until both near balls rest
+        force   = [0, 0, args['press_force'], 0, 0, 0]
+        tcp     = near_tcp(press['plate'])
         robot.set_tcp(matrix_to_pose(tcp))
-        poses, wrenches = robot.press(args['press_force'], args['press_time'], args['press_damping'],
-                                      args['press_free'][press['plate']], args['press_limits'][press['plate']])
-        robot.set_tcp([0, 0, 0, 0, 0, 0])
+        robot.press(force, args['press_time']['roll'], args['press_damping'], args['press_free']['roll'],
+                    args['press_limits']['roll'])
 
-        # judged on the last half of what press() keeps (the last quarter of the press), once the plate has settled
-        poses, wrenches = poses[len(poses) // 2:], wrenches[len(wrenches) // 2:]
+        # turn on the near balls (position controlled) to lower the far ball until it pushes: only its push has a
+        # moment about their line, so watch that moment change from where it was (the wrist sensor's moments are
+        # off by up to ~1 Nm under load, a change is not), averaged over avg_samples control periods
+        T0      = pose_to_matrix(robot.get_tcp_pose())
+        axis    = T0[:3, 0]
+        m0      = robot.mean_tcp_force(args['avg_samples'])[3:] @ axis
+        recent  = []
+        def touched(pose, wrench):
+            recent.append(wrench[3:] @ axis)
+            del recent[:-args['avg_samples']]
+            return len(recent) == args['avg_samples'] and abs(np.mean(recent) - m0) > args['far_moment']
+        far     = robot.turn_until(far_down(press['plate']) * axis, args['pitch_speed'], args['pitch_acc'], touched,
+                                   args['max_pitch'] / args['pitch_speed'])
+
+        # push with every turn held, the poses and wrenches of the second half of it
+        poses, wrenches = robot.press(force, args['press_time']['settle'], args['press_damping'],
+                                      args['press_free']['settle'], args['press_limits']['settle'])
+        robot.set_tcp([0, 0, 0, 0, 0, 0])
         T       = pose_to_matrix(poses.mean(axis=0)) @ np.linalg.inv(tcp)
         wrench  = wrenches.mean(axis=0)
-        forces  = ball_forces(T, wrench, press['plate'])
+        forces  = ball_forces(T, wrench, press['plate'], tcp)
         push    = (T @ tcp)[:3, 2]
         side    = np.linalg.norm(wrench[:3] - (wrench[:3] @ push) * push)
-        # how much the plate still moved: TCP travel, and its tilt seen at the balls (58 mm from the TCP)
-        moving  = max(np.ptp(poses[:, :3], axis=0).max(), np.ptp(poses[:, 3:], axis=0).max() * 0.058)
+        pitch   = np.degrees(R.from_matrix(T0[:3, :3].T @ (T @ tcp)[:3, :3]).as_rotvec()[0]) * far_down(press['plate'])
+        # how much the plate still moved: TCP travel, and its tilt seen at the far ball (87 mm from the TCP)
+        moving  = max(np.ptp(poses[:, :3], axis=0).max(), np.ptp(poses[:, 3:], axis=0).max() * 0.087)
     else:
         # URSim has no contact or force: find the face the first ball meets and lay the plate flush on it
         hit = sim_env.first_contact(transform_points(press['start'], balls), BALL_R, press['direction'])
@@ -367,11 +406,13 @@ def press_face(robot, sim_env, press : dict, args):
         forces  = np.full(3, args['press_force'] / 3)
         wrench  = np.zeros(6)               # URSim feels no force
         side    = 0.0
+        pitch   = np.degrees(args['approach_pitch'])
+        far     = True
         moving  = 0.0
-    why     = [f"ball {i + 1} only {f:.1f} N" for i, f in enumerate(forces) if f < args['min_ball_force']]
+    why     = [] if far else [f"far ball not touched within {np.degrees(args['max_pitch']):.0f} deg"]
     why    += [f"{side:.1f} N across the push, something else touches"] if side > args['max_side_force'] else []
     press.update(T=T, centers=transform_points(T, balls), wrench=wrench, forces=forces, side=side, moving=moving,
-                 flat=not why, why=why)
+                 pitch=pitch, far=far, flat=not why, why=why)
     robot.move_l(matrix_to_pose(press['start']), args['lin_speed'], args['lin_acc'])
     return True
 
@@ -400,9 +441,10 @@ def run(robot, arm : dict, sim_env, planes : dict, center : np.ndarray, args):
             prev = press
             planes.update({face: (plane['point'], plane['normal']) for face, plane in fit_faces(done).items()})
             print(f"{edge:5s} edge  {plate:5s} plate on the {press['face']:5s} face: "
-                  f"ball forces {np.round(press['forces'], 1)} N, {press['side']:.1f} N across, still within "
+                  f"far ball {'touched' if press['far'] else 'NOT touched'} after pitching {press['pitch']:.2f} deg, "
+                  f"ball forces ~{np.round(press['forces'], 1)} N, {press['side']:.1f} N across, still within "
                   f"{press['moving'] * 1000:.1f} mm: "
-                  f"{'seated, all three balls pushing' if press['flat'] else 'NOT SEATED, ' + ', '.join(press['why'])}")
+                  f"{'seated, all three balls touching' if press['flat'] else 'NOT SEATED, ' + ', '.join(press['why'])}")
         for T in route_home(press, planes, center, args):
             robot.move_l(matrix_to_pose(T), args['lin_speed'], args['lin_acc'])
         robot.move_j(q_home, args['move_speed'], args['move_acc'])
@@ -518,7 +560,8 @@ def plot(planes : dict, cam_points : np.ndarray, results : dict, half : dict, ar
 
 
 # what is kept of every press
-PRESS_KEYS = ('edge', 'plate', 'face', 'direction', 'T', 'centers', 'wrench', 'forces', 'side', 'moving', 'flat')
+PRESS_KEYS = ('edge', 'plate', 'face', 'direction', 'T', 'centers', 'wrench', 'forces', 'side', 'moving', 'pitch', 'far',
+              'flat')
 
 
 def save(path : Path, cam_points : np.ndarray, T_beam : np.ndarray, half : dict, presses : list,
@@ -661,8 +704,9 @@ if __name__ == "__main__":
     # sides a few mm), so the search covers +-4 cm; longer, the top face press's far end takes the front plate
     # (127 mm below the top plate) near the table when the beam lies on it. The other plate's nearest ball stays
     # clear of its face, clear_measured once that face is touched: on a side face press the top plate's near balls
-    # then land ~27 mm behind the end face edge (31 mm - clear_measured with plate_tilts), and the top plate holds
-    # its turn about the edge within 0.01 rad (press_limits), which moves the front plate's far ball <= 1.3 mm
+    # then land ~25 mm behind the end face edge (31 mm - clear_measured with plate_tilts, less 2.2 mm per degree
+    # of approach_pitch); while they roll the plate holds its turn about the edge within 0.01 rad (press_limits),
+    # and pitching forward on them moves the front plate away from the end face
     args['standoff']        = 0.04
     args['max_travel']      = 0.08
     args['clear']           = 0.02
@@ -672,27 +716,33 @@ if __name__ == "__main__":
     args['teach_first']     = False
     args['retract']         = 0.20      # back from the end face when going from edge to edge
 
-    # force mode after the first contact: push (N) for press_time (s), tilting freely until all balls touch;
-    # limits: [x, y] allowed deviation (m), [z] speed (m/s), [rx, ry] speed (rad/s), [rz] deviation (rad).
-    # damping 0..1 (ur_rtde default 0.005), tune on the arm. The wrench of the last second says whether the plate
-    # sat: every ball pushing at least min_ball_force (from the moments about the balls' center) and less than
-    # max_side_force across the push (sensor precision ~3.5 N; on 2026-10-06 seated plates read 3-11 N per ball)
-    # Free axes of the press frame (plate_tcp: z the push, x along the near balls' line, y across it): the front
-    # plate turns both ways; the top plate only about y (the tool axis), since turning about the edge swings the
-    # front plate (127 mm below) onto the end face; its tilt about the edge is planned in (plate_tilts)
+    # a press, the same for both plates (near_tcp frame: z the push, x along the near balls' line, y towards the
+    # far ball): the plate comes in with its far ball raised by approach_pitch (each degree takes the top plate's
+    # near balls 2.2 mm closer to the end face edge) until a near ball touches; 'roll' pushes press_force (N) in
+    # force mode turning only about y with no moment until both near balls rest; then the tool turns on the near
+    # balls, position controlled, at pitch_speed towards lowering the far ball (-x for the front plate, +x for the
+    # top) until the moment about their line changes by far_moment (~3 N on the far ball, 87 mm out; averaged
+    # over avg_samples control periods), at most max_pitch; 'settle' pushes with every turn held, and its last
+    # second is kept. Steering by moments failed on the real arm (2026-10-06): under load the wrist sensor's
+    # moments were ~1 Nm off, so plates tipped the wrong way and the ball forces from them are rough (~5 N).
+    # press_limits: speeds on the free axes, allowed deviations on the held ones (m, m/s, rad, rad/s)
     args['press_force']     = 20.0
-    args['press_time']      = 4.0
+    args['press_time']      = {'roll': 2.0, 'settle': 1.5}
     args['press_damping']   = 0.1
-    args['press_free']      = {'front': [0, 0, 1, 1, 1, 0], 'top': [0, 0, 1, 0, 1, 0]}
-    args['press_limits']    = {'front': [0.005, 0.005, 0.01, 0.2, 0.2, 0.05], 'top': [0.005, 0.005, 0.01, 0.01, 0.2, 0.05]}
+    args['press_free']      = {'roll': [0, 0, 1, 0, 1, 0], 'settle': [0, 0, 1, 0, 0, 0]}
+    args['press_limits']    = {'roll': [0.005, 0.005, 0.01, 0.01, 0.2, 0.05], 'settle': [0.005, 0.005, 0.01, 0.01, 0.01, 0.05]}
+    args['approach_pitch']  = np.radians(1)
+    args['pitch_speed']     = np.radians(1)     # rad/s
+    args['pitch_acc']       = 0.5               # rad/s^2
+    args['max_pitch']       = np.radians(6)
+    args['far_moment']      = 0.25              # Nm
+    args['avg_samples']     = 25                # 50 ms at 500 Hz
 
-    # the real plates are the drawing's turned this much about the edge (flange x) through their ball tips (rad):
-    # fitted on the 2026-10-06 13:55 run (results/beam_20261006_135501.npz) for a square beam with a flat end
-    # face; the three end face presses then agree to 0.43 mm rms (1.08 with the drawing) and left/right are
-    # parallel within 0.2 deg (6.7). Where each plate turns about is not known, so face positions may be a few mm
-    # off: check the touch width against calipers. The simulated tool is the drawing
-    args['plate_tilts']     = {'front': 0.0, 'top': 0.0} if args['sim'] else {'front': np.radians(-1.29), 'top': np.radians(3.26)}
-    args['min_ball_force']  = 2.0
+    # the real plates are the drawing's turned this much about the edge (flange x) through their ball tips (rad).
+    # A fit on the 13:55 run gave front -1.29 deg, top +3.26 deg, but those plates were seated by the sensor's
+    # moments, which were off: zero (the drawing) until a run seated by contact shows a real tilt. The simulated
+    # tool is the drawing
+    args['plate_tilts']     = {'front': 0.0, 'top': 0.0}
     args['max_side_force']  = 5.0
 
     # speeds: touching (m/s, m/s^2), straight line moves, joint moves (rad/s, rad/s^2)

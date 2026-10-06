@@ -106,25 +106,52 @@ class URRobot:
         # zero the wrist force/torque sensor, with the arm at rest and touching nothing
         self.control.zeroFtSensor()
 
-    def press(self, force : float, duration : float, damping : float, free, limits):
-        # force mode about the current TCP for duration (s): push force (N) along the TCP z axis and stay
-        # compliant with zero torque in the rotations set in free ([x, y, z, rx, ry, rz], 1 = compliant, z must
-        # be 1), stiff in the rest (limits: speeds on the compliant axes, allowed deviations on the others);
-        # returns the TCP poses and wrenches of the second half, when the arm should be at rest
+    def press(self, wrench, duration : float, damping : float, free, limits):
+        # force mode about the current TCP for duration (s): apply wrench ([Fx, Fy, Fz, Mx, My, Mz] in the TCP
+        # frame, N and Nm) on the compliant axes set in free (1 = compliant), stiff in the rest (limits: speeds on
+        # the compliant axes, allowed deviations on the others); returns the TCP poses and wrenches of the second
+        # half, when the arm should be at rest
         frame   = list(self.get_tcp_pose())
+        command = [float(w) for w in wrench]
+        if len(command) != 6:
+            raise ValueError(f"press needs a 6 value wrench, got {wrench}")
         poses   = []
-        wrench  = []
+        read    = []
         start   = time.time()
         self.control.forceModeSetDamping(damping)
         while time.time() - start < duration:
             t = self.control.initPeriod()
-            self.control.forceMode(frame, list(free), [0, 0, force, 0, 0, 0], 2, list(limits))
+            self.control.forceMode(frame, [int(f) for f in free], command, 2, [float(l) for l in limits])
             if time.time() - start > duration / 2:
                 poses.append(self.get_tcp_pose())
-                wrench.append(self.get_tcp_force())
+                read.append(self.get_tcp_force())
             self.control.waitPeriod(t)
         self.control.forceModeStop()
-        return np.array(poses), np.array(wrench)
+        return np.array(poses), np.array(read)
+
+    def turn_until(self, axis, speed : float, acc : float, stop, timeout : float):
+        # turn the TCP about axis (unit vector in the base frame, through the TCP) at speed (rad/s), position
+        # controlled, until stop(TCP pose, TCP wrench) says so or timeout (s); returns whether stop did
+        start   = time.time()
+        stopped = False
+        while time.time() - start < timeout:
+            t = self.control.initPeriod()
+            self.control.speedL([0, 0, 0] + [float(a * speed) for a in axis], acc, 0.1)
+            if stop(self.get_tcp_pose(), self.get_tcp_force()):
+                stopped = True
+                break
+            self.control.waitPeriod(t)
+        self.control.speedStop(acc)
+        return stopped
+
+    def mean_tcp_force(self, n : int):
+        # wrench at the TCP averaged over n control periods
+        read = []
+        for _ in range(n):
+            t = self.control.initPeriod()
+            read.append(self.get_tcp_force())
+            self.control.waitPeriod(t)
+        return np.mean(read, axis=0)
 
     def speed_l(self, xd, acc : float, time : float):
         # TCP velocity [vx, vy, vz, wx, wy, wz] in the base frame (m/s, rad/s), returns at once;
