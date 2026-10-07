@@ -358,7 +358,7 @@ if __name__ == "__main__":
 
     # start: the arm moves to start_q first (visual_servo.py's home, sim), or starts wherever it is (None: put the
     # camera ~0.4 m from the board, looking at it, with the pendant or freedrive)
-    args['start_q']         = [1.5823, -1.4434, -2.1595, 2.0374, -1.5729, -0.0185] if args['sim'] else None
+    args['start_q']         = [-1.5593, -1.4434, -2.1595, 2.0374, -1.5729, -0.0185] if args['sim'] else None
 
     # views around the board center (deg): the start view with every roll, then tilts at n_azimuths azimuths,
     # cycling through rolls about the optical axis (30 deg apart from view to view, to keep the wrist's moves

@@ -45,7 +45,7 @@ from env.clearance import load_arm, joint_path, problems, table_problem
 from env.ur_robot import URRobot
 from env.vision import Vision
 from utils.utils import pose_to_matrix, matrix_to_pose, transform_points, ur_branch, ur_forward_kinematics
-from visual_servo import find_wood_face
+from visual_servo import find_wood_face, cut_sides
 
 # edge finder balls in the flange frame (m), fitted to edge_finder.stl: each plate has three r = 10 mm balls
 # on a 100 mm equilateral triangle, pressing along the plate's outward normal. CAD is the drawing (square L, the
@@ -88,8 +88,15 @@ def camera_face(vision, robot, args, rng):
     points      = []
     for _ in range(args['n_frames']):
         face = find_wood_face(*vision.get_frames(), vision.intrinsics, args, rng)
-        if face is not None:
-            points.append(face['points'])
+        if face is None:
+            continue
+        # the top and side faces are placed from the end face's top edge and sides: they must be in view (a top
+        # edge read low put the top plate into the end face). Its bottom may be cut, the height is then the
+        # visible part
+        cut = cut_sides(face['mask'], args['border_px'])
+        if cut:
+            raise SystemExit(f"the end face's {', '.join(cut)} edge is out of view, run visual_servo.py again")
+        points.append(face['points'])
     if not points:
         raise SystemExit("the camera sees no wood face, run visual_servo.py first")
     return transform_points(T_base_cam, np.vstack(points)), pose_to_matrix(robot.get_tcp_pose())
@@ -630,7 +637,8 @@ if __name__ == "__main__":
 
     # camera color optical frame in the flange frame [x, y, z, rx, ry, rz], same as visual_servo.py
     # args['cam_in_flange']   = [0.0325, 0.0911, 0.0290, 0.0, 2.2214, 2.2214]
-    args['cam_in_flange']   = [0.0314, 0.0891, 0.0293, -0.0328, -2.1095, -2.3137]
+    # hand-eye 2026-10-07 after the robot was moved (the camera sat 3.8 deg further pitched than on 10-06)
+    args['cam_in_flange']   = [0.0325, 0.0744, 0.0295, -0.0198, -2.1853, -2.2446]
     args['width']           = 640
     args['height']          = 480
     args['fps']             = 30
@@ -649,7 +657,7 @@ if __name__ == "__main__":
     args['cam_dist']        = 3.0
 
     # wood face from the depth camera, same as visual_servo.py, stacked over n_frames frames
-    args['hsv_low']         = np.array([8, 110, 40])
+    args['hsv_low']         = np.array([0, 30, 40])
     args['hsv_high']        = np.array([25, 255, 255])
     args['depth_min']       = 0.3
     args['depth_max']       = 1.5
@@ -664,6 +672,7 @@ if __name__ == "__main__":
     args['ransac_points']   = 2000
     args['min_pixels']      = 3000
     args['n_frames']        = 10
+    args['border_px']       = 8         # a face this close to the image edge runs off it (see cut_sides)
 
     # presses (m): the plate starts standoff before the face's estimate and searches up to max_travel for the
     # first contact. With the hand-eye calibrated camera the faces are within ~1 cm (the end face 7.6 mm off, the

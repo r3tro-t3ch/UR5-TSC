@@ -67,7 +67,7 @@ if __name__ == "__main__":
     # home (rad), keep it the same as visual_servo.py's home_q (wrist above the tool), and the same guard:
     # singularity margins (shoulder in m, elbow and wrist as |sin|) and the table (top at table_z in UR's base
     # frame, nothing closer than table_margin, shapes from xml_file), the move checked every step_angle (rad)
-    args['home_q']          = [1.5823, -1.4434, -2.1595, 2.0374, -1.5729, -0.0185]
+    args['home_q']          = [-1.5593, -1.4434, -2.1595, 2.0374, -1.5729, -0.0185]
     args['start_margins']   = {'shoulder': 0.08, 'elbow': 0.17, 'wrist': 0.17}
     args['xml_file']        = 'ur10e.xml'
     args['table_z']         = 0.0

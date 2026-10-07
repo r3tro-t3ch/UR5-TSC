@@ -27,8 +27,10 @@
 # Position-based visual servoing of a UR arm with a wrist-mounted camera, the
 # same code for the real arm + RealSense and for URSim + MuJoCo (args['sim']).
 # Find the wood by HSV color, fit a plane to the wood pixels to get the beam
-# face, and drive the camera with speedL until it looks at the face center from
-# a set distance, a little from above. Press q or Esc to quit.
+# face, and drive the camera with speedL until it looks at the face from a set
+# distance, a little from above, at a set height over the face's top edge (the
+# face is centered left to right, not up and down), with the face's top and
+# sides in view. Press q or Esc to quit.
 
 import cv2
 import numpy as np
@@ -84,24 +86,37 @@ def find_wood_face(color : np.ndarray, depth : np.ndarray, intrinsics, args, rng
     return {'mask': mask, 'points': points[mask], 'normal': face['normal'], **measure_face(points[mask])}
 
 
+def cut_sides(mask : np.ndarray, border : int):
+    # the image edges a face runs off, of the ones the presses need: its top edge and both sides (the top and side
+    # presses are planned from them). Its bottom may run off, the beam's height matters less. Pixel normals are
+    # zero in the outer normal_px rows and columns, so a cut face stops a few pixels in, inside border
+    edges = {'top': mask[:border], 'left': mask[:, :border], 'right': mask[:, -border:]}
+    return [side for side, edge in edges.items() if edge.any()]
+
+
 def viewing_pose(face, T_base_cam : np.ndarray, args):
     # face center and normal (pointing at the camera) in the base frame
     center  = T_base_cam[:3, :3] @ face['midpoint'] + T_base_cam[:3, 3]
     normal  = T_base_cam[:3, :3] @ face['normal']
 
     # stand back from the face center along its normal turned view_elevation up (looking down at the face keeps
-    # the tool, which hangs below the camera, high above the table)
+    # the tool, which hangs below the camera, high above the table), but at above_top over the face's top edge:
+    # the face is not centered up and down, so a face taller than the image is not chased, its top edge stays in
+    # view and its bottom may run off. While the top edge is out of view, the highest point seen is just under
+    # the image's top edge, so the camera rises until it comes into view
+    top     = np.percentile(face['points'] @ T_base_cam[2, :3] + T_base_cam[2, 3], 99.9)
     up      = np.array([0, 0, 1.0]) - normal[2] * normal
     up     /= np.linalg.norm(up)
     back    = np.cos(args['view_elevation']) * normal + np.sin(args['view_elevation']) * up
 
-    # camera z looks at the face center, x stays as close as possible to the current x (no needless roll)
+    # camera z looks along the turned normal, x stays as close as possible to the current x (no needless roll)
     z   = -back
     x   = T_base_cam[:3, 0] - (T_base_cam[:3, 0] @ z) * z
     x  /= np.linalg.norm(x)
     T           = np.eye(4)
     T[:3, :3]   = np.column_stack((x, np.cross(z, x), z))
     T[:3, 3]    = center + args['view_distance'] * back
+    T[2, 3]     = top + args['above_top']
     return T
 
 
@@ -169,8 +184,13 @@ def main(args):
                 xd, e_pos, e_rot, done  = servo_velocity(viewing_pose(face, T_base_cam, args), T_base_cam, args)
                 if not args['dry_run']:
                     robot.speed_l(xd, args['max_acc'], args['speed_time'])
+
+                # done only with the face's top edge and whole width in view, which measure_beam.py needs
+                cut     = cut_sides(face['mask'], args['border_px'])
+                done   &= not cut
                 status = (f"err {np.linalg.norm(e_pos) * 100:.1f} cm {np.degrees(np.linalg.norm(e_rot)):.1f} deg  "
-                          f"v {np.round(xd[:3] * 100, 1)} cm/s" + ("  DRY RUN" if args['dry_run'] else ""))
+                          f"v {np.round(xd[:3] * 100, 1)} cm/s" + (f"  {', '.join(cut)} out of view" if cut else "")
+                          + ("  DRY RUN" if args['dry_run'] else ""))
 
             # show the face and the servo state
             image = draw_faces(color, [face], vision.intrinsics) if face is not None else color.copy()
@@ -200,12 +220,13 @@ if __name__ == "__main__":
     args['dry_run']         = False      # compute and show the commands but do not move the arm
     args['watchdog_hz']     = 5         # minimum loop rate before the robot stops itself
 
-    # home (rad): camera 25 cm in front of a pose read from the real arm on 2026-10-05, 18.5 cm clear of the
-    # shoulder singularity; change it to start somewhere else (the guard below checks it).
+    # home (rad): camera 25 cm in front of a pose read from the real arm on 2026-10-05 (base turned by pi on
+    # 2026-10-07, the beam now on the other side), 18.5 cm clear of the shoulder singularity; change it to start
+    # somewhere else (the guard below checks it).
     # both the real arm and URSim moveJ here before servoing. The wrist is above the tool (the other wrist
-    # solution of the same pose, [1.5823, -0.9454, -2.4521, -1.3096, 1.5729, 3.1231], hangs it 18 cm below):
+    # solution of the same pose, [-1.5593, -0.9454, -2.4521, -1.3096, 1.5729, 3.1231], hangs it 18 cm below):
     # measure_beam.py keeps this wrist, and with the tool level at the beam's sides only this one clears the table
-    args['home_q']          = [1.5823, -1.4434, -2.1595, 2.0374, -1.5729, -0.0185]
+    args['home_q']          = [-1.5593, -1.4434, -2.1595, 2.0374, -1.5729, -0.0185]
 
     # singularity guard (see utils.singularity_margins): the arm does not start when home_q is closer than
     # start_margins and stops servoing below run_margins. shoulder in m, elbow and wrist as |sin| (0.17 ~ 10 deg)
@@ -223,7 +244,8 @@ if __name__ == "__main__":
     # from edge_finder.stl: D435 on the top pad, RGB lens 4.2 mm behind the front glass, looking along the
     # flange's +y with image down along the tool axis. CAD only, hand-eye calibrate before turning dry_run off
     # args['cam_in_flange']   = [0.0325, 0.0911, 0.0290, 0.0, 2.2214, 2.2214]
-    args['cam_in_flange']   = [0.0314, 0.0891, 0.0293, -0.0328, -2.1095, -2.3137]
+    # hand-eye 2026-10-07 after the robot was moved (the camera sat 3.8 deg further pitched than on 10-06)
+    args['cam_in_flange']   = [0.0325, 0.0744, 0.0295, -0.0198, -2.1853, -2.2446]
 
     # camera
     args['width']           = 640
@@ -246,8 +268,10 @@ if __name__ == "__main__":
     args['cam_ele']         = -25               # deg
     args['cam_dist']        = 3.0               # m
 
-    # wood color (OpenCV HSV: H 0-179), tuned on the beam end face in the lab
-    args['hsv_low']         = np.array([8, 110, 40])
+    # wood color (OpenCV HSV: H 0-179): only seeds the plane fits, the face then grows over its plane whatever the
+    # color. S from 30 seeds the paler glulam logs (S ~8-135) and the first slab (S >= 110); the background beyond
+    # depth_max does not matter
+    args['hsv_low']         = np.array([0, 30, 40])
     args['hsv_high']        = np.array([25, 255, 255])
 
     # face detection (see test_vision.py): the largest of max_faces wood planes whose normal is within
@@ -266,10 +290,13 @@ if __name__ == "__main__":
     args['ransac_iters']    = 200
     args['ransac_points']   = 2000
     args['min_pixels']      = 3000
+    args['border_px']       = 8         # a face this close to the image edge runs off it (see cut_sides)
 
     # servoing
     args['view_distance']   = 0.4       # camera distance from the face center (m)
     args['view_elevation']  = np.radians(20)    # looking down at the face from this far above its normal
+    args['above_top']       = 0.09      # camera height over the face's top edge (m): the top edge ~70 px below the
+                                        # image's top; for the first slab (top 0.30 m) this is home's height
     args['gain']            = 0.2       # 1/s, the error shrinks by ~63 % every 5 s once below the speed caps
     args['max_speed']       = 0.02      # m/s
     args['max_ang_speed']   = 0.05      # rad/s (~3 deg/s)
