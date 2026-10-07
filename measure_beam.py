@@ -25,14 +25,16 @@
 #
 # Overview:
 # Measure the end of a wooden beam by touch, after visual_servo.py has left the
-# camera looking straight at the beam's end face. The depth camera gives a
-# first estimate of the face. Then the edge finder's two L-shaped plates press
-# on the faces at the top, right and left edges: the front plate on the end
-# face, the top plate on the side face. Each press moves in until the first ball
-# touches (the robot's own contact detection), then pushes in force mode while
-# free to tilt, so the plate settles with all three balls on the wood. Planes
-# through the ball contacts give the width and the angles between the faces;
-# they are compared with the camera's plane and plotted with matplotlib.
+# camera looking at the beam's end face. The depth camera gives a first
+# estimate of the faces. Then the edge finder's two L-shaped plates press on
+# the faces at the top, right and left edges: the front plate on the end face,
+# the top plate on the side face. Each plate comes in tilted, its far ball
+# raised, until a near ball touches (the robot's own contact detection), rolls
+# in force mode until both near balls rest, turns on them until the far ball
+# touches too (seen as a change in the moment about their line), then pushes
+# still. Planes through the ball contacts give the width and the angles between
+# the faces; they are compared with the camera's plane and plotted with
+# matplotlib. Every move is checked first for reach, singularities and the table.
 
 import time
 import numpy as np
@@ -156,29 +158,6 @@ def edge_pose(planes : dict, center : np.ndarray, edge : str):
     T[:3, 3]    = np.linalg.solve(np.vstack((n_end, n_side, x)),
                                   [n_end @ p_end + reach('front'), n_side @ p_side + reach('top'), x @ center])
     return T
-
-
-def teach_top_edge(robot, planes : dict, center : np.ndarray, args):
-    # correct the camera's guess by hand: in freedrive the tool is seated on the top edge (front plate balls on
-    # the end face, top plate balls on the top face), and the camera's whole estimate is moved rigidly onto it,
-    # keeping the camera's position along the edge. Then the tool backs off up and away. Returns the corrected
-    # faces and center, and the correction (4x4, UR base frame)
-    robot.free_drive(True)
-    input("freedrive: seat the tool on the top edge of the end face (front plate balls on the end face, "
-          "top plate balls on the top face), let go, then press Enter ")
-    robot.free_drive(False)
-    T_taught        = pose_to_matrix(robot.get_tcp_pose())
-    T_guess         = edge_pose(planes, center, 'top')
-    T_taught[:3, 3] += ((T_guess[:3, 3] - T_taught[:3, 3]) @ T_taught[:3, 0]) * T_taught[:3, 0]
-    fix             = T_taught @ np.linalg.inv(T_guess)
-
-    # off the wood: first up and back a little (no sliding on the top face), then straight back
-    T_off           = pose_to_matrix(robot.get_tcp_pose())
-    T_off[:3, 3]   += args['clear'] * (T_off[:3, 1] - T_off[:3, 2])
-    robot.move_l(matrix_to_pose(T_off), args['touch_speed'], args['touch_acc'])
-    robot.move_l(matrix_to_pose(retracted(T_off, args)), args['lin_speed'], args['lin_acc'])
-    return ({face: (transform_points(fix, p[None])[0], fix[:3, :3] @ n) for face, (p, n) in planes.items()},
-            transform_points(fix, center[None])[0], fix)
 
 
 def plate_tcp(plate : str):
@@ -565,11 +544,9 @@ PRESS_KEYS = ('edge', 'plate', 'face', 'direction', 'T', 'centers', 'wrench', 'f
 
 
 def save(path : Path, cam_points : np.ndarray, T_beam : np.ndarray, half : dict, presses : list,
-         T_capture : np.ndarray, cam_fixed):
-    # everything needed to fit and plot again without the robot, plus where the camera was and its corrected
-    # mounting when the first edge was taught (nan otherwise)
+         T_capture : np.ndarray):
+    # everything needed to fit and plot again without the robot, plus where the camera was (flange pose)
     np.savez(path, cam_points=cam_points, T_beam=T_beam, half=[half['top'], half['left']], T_capture=T_capture,
-             cam_fixed=np.full(6, np.nan) if cam_fixed is None else cam_fixed,
              **{key: np.array([press[key] for press in presses]) for key in PRESS_KEYS})
 
 
@@ -624,17 +601,6 @@ def main(args):
         print(f"camera: end face {2 * half['left'] * 1000:.0f} x {2 * half['top'] * 1000:.0f} mm, "
               f"center {np.round(center * 1000)} mm")
 
-        # optionally seat the tool on the top edge by hand: corrects the camera's guess for this run, and gives
-        # the camera's mounting (cam_in_flange) that would have seen the face where it really is
-        cam_fixed = None
-        if args['teach_first']:
-            planes, center, fix = teach_top_edge(robot, planes, center, args)
-            cam_fixed = matrix_to_pose(np.linalg.inv(T_capture) @ fix @ T_capture @ pose_to_matrix(args['cam_in_flange']))
-            moved = np.linalg.norm(transform_points(fix, T_beam[:3, 3][None])[0] - T_beam[:3, 3])
-            turned = np.degrees(np.linalg.norm(R.from_matrix(fix[:3, :3]).as_rotvec()))
-            print(f"camera guess moved {moved * 1000:.1f} mm and turned {turned:.2f} deg onto the taught edge; "
-                  f"cam_in_flange that fits: {np.round(cam_fixed, 4).tolist()}")
-
         # check the whole routine as planned, then press, correcting the plan as faces are touched
         try:
             check_plan(robot, arm, planes, center, args)
@@ -649,7 +615,7 @@ def main(args):
     out     = Path(args['out_dir'])
     out.mkdir(exist_ok=True)
     path    = out / f"beam_{time.strftime('%Y%m%d_%H%M%S')}.npz"
-    save(path, cam_points, T_beam, half, presses, T_capture, cam_fixed)
+    save(path, cam_points, T_beam, half, presses, T_capture)
     print(f"saved {path}")
     report(presses, cam_points, half, path, args)
 
@@ -711,9 +677,6 @@ if __name__ == "__main__":
     args['max_travel']      = 0.08
     args['clear']           = 0.02
     args['clear_measured']  = 0.004
-    # seat the tool on the top edge by hand first: not needed with the hand-eye calibrated cam_in_flange (2026-10-06,
-    # yesterday's camera end face then sits 0.19 deg / 7.6 mm from the touched one), True with an uncalibrated camera
-    args['teach_first']     = False
     args['retract']         = 0.20      # back from the end face when going from edge to edge
 
     # a press, the same for both plates (near_tcp frame: z the push, x along the near balls' line, y towards the

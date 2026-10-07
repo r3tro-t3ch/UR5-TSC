@@ -24,15 +24,14 @@
 # SOFTWARE.
 #
 # Overview:
-# Detect the flat faces of a wooden beam in front of an Intel RealSense D435.
-# Back-project the depth image to a point cloud and fit planes to it one at a
-# time with RANSAC. Measure each face (midpoint, its distance, length and
-# breadth) and show it in a cv2 window and its point cloud in an Open3D window.
-# Press q or Esc to quit.
+# The Intel RealSense D435 and the beam's faces in its images, for
+# visual_servo.py: start the camera and read aligned color and depth frames,
+# back-project the depth image to a point cloud, fit planes to it one at a time
+# with RANSAC, measure each face (midpoint, its distance, length and breadth)
+# and draw the faces over the color image.
 
 import cv2
 import numpy as np
-import open3d as o3d
 import pyrealsense2 as rs
 
 # overlay colors (BGR), one per detected face, all readable on a white background and under black text
@@ -170,110 +169,3 @@ def draw_faces(color, faces, intrinsics):
             cv2.putText(output, line, (int(text_u), int(text_v) + 20 * k), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
     return output
-
-
-def start_viewer():
-    # Open3D window with a white background that we update ourselves every frame
-    app     = o3d.visualization.gui.Application.instance
-    app.initialize()
-    window  = app.create_window("face point clouds", 800, 600)
-    widget  = o3d.visualization.gui.SceneWidget()
-    widget.scene = o3d.visualization.rendering.Open3DScene(window.renderer)
-    widget.scene.set_background([1.0, 1.0, 1.0, 1.0])
-    widget.scene.view.set_post_processing(False)    # no tone mapping, so white is pure white and colors are exact
-    window.add_child(widget)
-
-    # the 3D scene fills the whole window
-    def on_layout(context):
-        widget.frame = window.content_rect
-    window.set_on_layout(on_layout)
-
-    # start at the sensor looking along its z axis (y points down in the camera frame)
-    widget.setup_camera(60.0, o3d.geometry.AxisAlignedBoundingBox([-2, -2, 0], [2, 2, 4]), [0, 0, 0.8])
-    widget.scene.camera.look_at([0, 0, 0.8], [0, 0, 0], [0, -1, 0])
-    return app, widget
-
-
-def update_viewer(widget, faces, labels, args):
-    # materials: unlit, so the colors stay exactly as painted
-    point_material              = o3d.visualization.rendering.MaterialRecord()
-    point_material.shader       = "defaultUnlit"
-    point_material.point_size   = 4
-    line_material               = o3d.visualization.rendering.MaterialRecord()
-    line_material.shader        = "unlitLine"
-    line_material.line_width    = 3
-
-    # remove last frame's geometry (removing a name that does not exist is harmless) and labels
-    for i in range(args['max_faces']):
-        widget.scene.remove_geometry(f"face_{i}")
-        widget.scene.remove_geometry(f"outline_{i}")
-    for label in labels:
-        widget.remove_3d_label(label)
-
-    labels = []
-    for i, face in enumerate(faces):
-        # point cloud of the face in the same color as its tint in the cv2 window (BGR -> RGB)
-        cloud = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(face['points']))
-        cloud.paint_uniform_color(np.array(COLORS[i % len(COLORS)][::-1]) / 255)
-
-        # measured rectangle around the face, black so it shows on the white background
-        outline = o3d.geometry.LineSet(o3d.utility.Vector3dVector(face['corners']),
-                                       o3d.utility.Vector2iVector([[0, 1], [1, 2], [2, 3], [3, 0]]))
-        outline.paint_uniform_color([0, 0, 0])
-        widget.scene.add_geometry(f"face_{i}", cloud, point_material)
-        widget.scene.add_geometry(f"outline_{i}", outline, line_material)
-
-        # length and breadth at the midpoint, in black (the default label color is white)
-        label       = widget.add_3d_label(face['midpoint'], f"{face['length']:.2f} x {face['breadth']:.2f} m")
-        label.color = o3d.visualization.gui.Color(0, 0, 0)
-        labels.append(label)
-
-    return labels
-
-
-def main(args):
-    pipeline, align, depth_scale, intrinsics = start_camera(args)
-    app, widget = start_viewer()
-    rng     = np.random.default_rng(0)  # fixed seed, so the same frame always gives the same faces
-    labels  = []                        # the 3D labels currently shown, removed again on the next frame
-
-    try:
-        while True:
-            color, depth    = get_frames(pipeline, align, depth_scale)
-            faces           = detect_faces(depth, get_points(depth, intrinsics), args, rng)
-            cv2.imshow("beam faces", draw_faces(color, faces, intrinsics))
-            labels          = update_viewer(widget, faces, labels, args)
-
-            # q, Esc or closing the Open3D window quits
-            if not app.run_one_tick() or cv2.waitKey(1) & 0xFF in (ord('q'), 27):
-                break
-    finally:
-        pipeline.stop()
-        cv2.destroyAllWindows()
-
-        # close the Open3D window, it needs one more tick to finish closing (else Python crashes on exit)
-        app.quit()
-        app.run_one_tick()
-
-
-if __name__ == "__main__":
-
-    args = {}
-
-    # camera
-    args['width']           = 640
-    args['height']          = 480
-    args['fps']             = 30
-
-    # working range in front of the camera (m)
-    args['depth_min']       = 0.3
-    args['depth_max']       = 1.5
-
-    # face detection
-    args['max_faces']       = 5         # planes to look for, a beam shows up to 3 of them, the rest is clutter
-    args['plane_tol']       = 0.01      # max distance of a point to its plane (m)
-    args['ransac_iters']    = 200
-    args['ransac_points']   = 2000      # points RANSAC samples from
-    args['min_pixels']      = 3000      # smallest patch counted as a face
-
-    main(args)

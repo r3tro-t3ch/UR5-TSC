@@ -24,33 +24,13 @@
 # SOFTWARE.
 #
 # Overview:
-# Provide quaternion-to-Euler conversion for scalar-first input quaternions
-# and construction of three-dimensional skew-symmetric matrices used by
-# orientation tracking calculations. Convert UR poses (position and rotation
-# vector) to 4x4 transforms and back. UR forward kinematics (DH), distances
+# Convert UR poses (position and rotation vector) to 4x4 transforms and back,
+# and move points through a transform. UR forward kinematics (DH), distances
 # to the arm's three singularities (shoulder, elbow, wrist) and which of the
 # eight IK solutions (branches) a joint configuration is.
 
 import numpy as np
 from scipy.spatial.transform import Rotation as R
-
-def quat2euler(quat):
-    _quat = np.concatenate([quat[1:], quat[:1]])
-    r = R.from_quat(_quat)
-    euler = r.as_euler('xyz', degrees=False)
-    return euler
-
-def skew_symmetric(vector):
-    mat = np.zeros((vector.shape[0], vector.shape[0]))
-
-    mat[0,1] = -vector[2]
-    mat[0,2] = vector[1]
-    mat[1,0] = vector[2]
-    mat[1,2] = -vector[0]
-    mat[2,0] = -vector[1]
-    mat[2,1] = vector[0]
-
-    return mat
 
 def pose_to_matrix(pose):
     # UR pose [x, y, z, rx, ry, rz] (rotation vector) -> 4x4 transform
@@ -103,10 +83,3 @@ def ur_branch(q, dh=UR10E_DH):
     p05 = T[:3, 3] - dh['d'][5] * T[:3, 2]
     return (int(np.sign(p05[0] * np.cos(q[0]) + p05[1] * np.sin(q[0]))), int(np.sign(np.sin(q[2]))),
             int(np.sign(np.sin(q[4]))))
-
-def get_quat_error(q, q_d):
-        a = np.array(q_d[1:4])
-        b = np.array(q[1:4])
-        q_d_x = skew_symmetric(a)
-        e = q[0]*a - q_d[0]*b - q_d_x @ b
-        return e

@@ -26,8 +26,9 @@
 # Overview:
 # All ur_rtde calls in one place: sensor readings (joint angles, TCP pose and
 # wrench), the controller's inverse kinematics and motion commands (TCP, moveJ,
-# moveL, move until contact, force mode press, freedrive, speedL, stop, watchdog). The same
-# RTDE connection drives the real UR arm and URSim, only the IP differs.
+# moveL, move until contact, force mode press, turn until a condition, speedL,
+# watchdog). The same RTDE connection drives the real UR arm and URSim, only
+# the IP differs.
 
 import time
 import numpy as np
@@ -95,13 +96,6 @@ class URRobot:
         self.control.stopL(acc)
         return contact
 
-    def free_drive(self, on : bool):
-        # freedrive: the arm can be moved by hand (like the pendant's freedrive button) until switched off
-        if on:
-            self.control.teachMode()
-        else:
-            self.control.endTeachMode()
-
     def zero_ft(self):
         # zero the wrist force/torque sensor, with the arm at rest and touching nothing
         self.control.zeroFtSensor()
@@ -157,10 +151,6 @@ class URRobot:
         # TCP velocity [vx, vy, vz, wx, wy, wz] in the base frame (m/s, rad/s), returns at once;
         # time (s) must be longer than the loop period, with time = 0 PolyScope 5.26 stops after the ramp
         self.control.speedL(list(xd), acc, time)
-
-    def stop(self, acc : float):
-        # decelerate to standstill (m/s^2), blocks until stopped (~speed / acc), so not inside a watchdog loop
-        self.control.speedStop(acc)
 
     def start_watchdog(self, hz : float):
         # the robot stops itself if kick_watchdog() is not called at least this often
